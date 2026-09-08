@@ -1,0 +1,39 @@
+# 编译产生的class文件（必须忽略）
+*.class
+
+# 依赖包文件夹（必须忽略）
+/target/
+/out/
+/build/
+
+# IDE配置文件（忽略你本地的个性化设置）
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+
+# 日志文件（必须忽略）
+*.log
+logs/
+
+# 操作系统生成的垃圾文件（必须忽略）
+.DS_Store
+Thumbs.db
+
+# 本地环境配置（非常重要，避免把数据库密码传上去）
+application-local.yml
+application-dev.yml
+application-prod.yml
+.env
+*.pem
+*.key
+
+# Maven/Gradle 本地缓存（通常忽略）
+.mvn/
+mvnw
+mvnw.cmd
+.gradle/
