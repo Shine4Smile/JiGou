@@ -1,6 +1,10 @@
 spring:
   application:
     name: JiGou
+  profiles:
+    active:
+      - dev
+
 server:
   port: 8181
   servlet:
