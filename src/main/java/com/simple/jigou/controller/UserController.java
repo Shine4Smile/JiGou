@@ -1,12 +1,17 @@
 package com.simple.jigou.controller;
 
-import com.mybatisflex.core.paginate.Page;
+import com.simple.jigou.common.BaseResponse;
+import com.simple.jigou.common.ResultUtils;
+import com.simple.jigou.exception.ErrorCode;
+import com.simple.jigou.exception.ThrowUtils;
+import com.simple.jigou.model.dto.user.UserLoginRequest;
+import com.simple.jigou.model.dto.user.UserRegisterRequest;
 import com.simple.jigou.model.entity.User;
+import com.simple.jigou.model.vo.LoginUserVO;
 import com.simple.jigou.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 用户 控制层。
@@ -20,69 +25,61 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+
     /**
-     * 保存用户。
+     * 用户注册
      *
-     * @param user 用户
-     * @return {@code true} 保存成功，{@code false} 保存失败
+     * @param registerRequest 用户注册请求参数接收类
      */
-    @PostMapping("save")
-    public boolean save(@RequestBody User user) {
-        return userService.save(user);
+    @PostMapping("register")
+    public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest registerRequest) {
+        ThrowUtils.throwIf(registerRequest == null, ErrorCode.PARAMS_ERROR);
+        String userAccount = registerRequest.getUserAccount();
+        String userName = registerRequest.getUserName();
+        String userPassword = registerRequest.getUserPassword();
+        String checkPassword = registerRequest.getCheckPassword();
+        long res = userService.userRegister(userAccount, userName, userPassword, checkPassword);
+        return ResultUtils.success(res);
     }
 
     /**
-     * 根据主键删除用户。
+     * 用户登录
      *
-     * @param id 主键
-     * @return {@code true} 删除成功，{@code false} 删除失败
+     * @param loginRequest 用户登录请求参数接收类
      */
-    @DeleteMapping("remove/{id}")
-    public boolean remove(@PathVariable Long id) {
-        return userService.removeById(id);
+    @PostMapping("login")
+    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest loginRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(loginRequest == null, ErrorCode.PARAMS_ERROR);
+        String userAccount = loginRequest.getUserAccount();
+        String userPassword = loginRequest.getUserPassword();
+        LoginUserVO loginUserVO = userService.userLogin(userAccount, userPassword, request);
+        return ResultUtils.success(loginUserVO);
     }
 
     /**
-     * 根据主键更新用户。
+     * 获取登录用户信息（脱敏后）
      *
-     * @param user 用户
-     * @return {@code true} 更新成功，{@code false} 更新失败
+     * @param request
+     * @return
      */
-    @PutMapping("update")
-    public boolean update(@RequestBody User user) {
-        return userService.updateById(user);
+    @GetMapping("/get/login")
+    public BaseResponse<LoginUserVO> getLoginUser(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(userService.getLoginUserVO(loginUser));
     }
 
     /**
-     * 查询所有用户。
+     * 注销登录
      *
-     * @return 所有数据
+     * @param request
+     * @return
      */
-    @GetMapping("list")
-    public List<User> list() {
-        return userService.list();
+    @PostMapping("/logout")
+    public BaseResponse<Boolean> userLogout(HttpServletRequest request) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        boolean result = userService.userLogout(request);
+        return ResultUtils.success(result);
     }
 
-    /**
-     * 根据主键获取用户。
-     *
-     * @param id 用户主键
-     * @return 用户详情
-     */
-    @GetMapping("getInfo/{id}")
-    public User getInfo(@PathVariable Long id) {
-        return userService.getById(id);
-    }
-
-    /**
-     * 分页查询用户。
-     *
-     * @param page 分页对象
-     * @return 分页对象
-     */
-    @GetMapping("page")
-    public Page<User> page(Page<User> page) {
-        return userService.page(page);
-    }
 
 }
