@@ -1,9 +1,14 @@
 package com.simple.jigou.service;
 
+import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import com.simple.jigou.model.dto.user.UserQueryRequest;
 import com.simple.jigou.model.entity.User;
 import com.simple.jigou.model.vo.LoginUserVO;
+import com.simple.jigou.model.vo.UserVO;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.List;
 
 /**
  * 用户 服务层。
@@ -49,6 +54,29 @@ public interface UserService extends IService<User> {
      */
     boolean userLogout(HttpServletRequest request);
 
+    /**
+     * 构造分页查询条件
+     * 由于使用mybatis-flex，所以将查询请求转换成 QueryWrapper
+     *
+     * @param userQueryRequest
+     * @return
+     */
+    QueryWrapper getQueryWrapper(UserQueryRequest userQueryRequest);
+
+    /**
+     * 获取脱敏后的用户列表
+     *
+     * @param userList 脱敏前用户列表
+     * @return
+     */
+    List<UserVO> getUserVOList(List<User> userList);
+
+    /**
+     * 获取脱敏的用户信息
+     *
+     * @return
+     */
+    UserVO getUserVO(User user);
 
     /**
      * 获取脱敏的已登录用户信息
