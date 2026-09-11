@@ -24,8 +24,28 @@
       <!-- 右侧：用户操作区 -->
       <a-col flex="none">
         <div class="user-actions">
-          <!-- TODO: 接入登录态后，替换为「头像 + 昵称」下拉菜单 -->
-          <a-button type="primary">登录</a-button>
+          <div class="user-login-status">
+            <div v-if="loginUserStore.loginUser.id">
+              <a-dropdown>
+                <a-space>
+                  <a-avatar :src="loginUserStore.loginUser.userAvatar" />
+                  {{ loginUserStore.loginUser.userName ?? '无名' }}
+                </a-space>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item @click="doLogout">
+                      <LogoutOutlined />
+                      退出登录
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
+
+            <div v-else>
+              <a-button type="primary" href="/user/login">登录</a-button>
+            </div>
+          </div>
         </div>
       </a-col>
     </a-row>
@@ -35,8 +55,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { MenuProps } from 'ant-design-vue'
+import { type MenuProps, message } from 'ant-design-vue'
 import { menuItems as menuConfig, siteConfig } from '@/layouts/config'
+import { LogoutOutlined } from '@ant-design/icons-vue'
+
+// JS 中引入 Store
+import { useLoginUserStore } from '@/stores/loginUser.ts'
+import { userLogout } from '@/api/userController.ts'
+
+const loginUserStore = useLoginUserStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +77,20 @@ const menuItems = computed<MenuProps['items']>(() => menuConfig)
 // 处理菜单点击：以菜单 key（即路由 path）进行跳转
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
   router.push(String(key))
+}
+
+// 用户注销
+const doLogout = async () => {
+  const res = await userLogout()
+  if (res.data.code === 0) {
+    loginUserStore.setLoginUser({
+      userName: '未登录',
+    })
+    message.success('退出登录成功')
+    await router.push('/user/login')
+  } else {
+    message.error('退出登录失败，' + res.data.message)
+  }
 }
 </script>
 
