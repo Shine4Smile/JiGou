@@ -61,7 +61,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
-import { menuItems as menuConfig, siteConfig } from '@/layouts/config'
+import { originMenuItems, siteConfig } from '@/layouts/config'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 
 // JS 中引入 Store
@@ -75,9 +75,6 @@ const router = useRouter()
 
 // 当前选中的菜单项：跟随路由变化，点击菜单跳转后 route.path 更新，选中态自动同步
 const selectedKeys = computed(() => [route.path])
-
-// 展示在导航栏的菜单项：从配置读取，后续可在此按登录态 / 角色过滤
-const menuItems = computed<MenuProps['items']>(() => menuConfig)
 
 // 处理菜单点击：以菜单 key（即路由 path）进行跳转
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -102,6 +99,25 @@ const doLogout = async () => {
     message.error('退出登录失败，' + res.data.message)
   }
 }
+
+// 根据权限过滤菜单项
+const filterMenus = (menus = [] as MenuProps['items']) => {
+  return menus?.filter((menu) => {
+    const menuKey = menu?.key as string
+    if (menuKey?.startsWith('/admin')) {
+      const loginUser = loginUserStore.loginUser
+      if (!loginUser || loginUser.userRole !== 'admin') {
+        return false
+      }
+    }
+    return true
+  })
+}
+
+// 展示在菜单的路由数组
+const menuItems = computed<MenuProps['items']>(() => {
+  return filterMenus(originMenuItems || [])
+})
 </script>
 
 <style scoped>

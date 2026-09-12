@@ -14,4 +14,7 @@ export const siteConfig = {
  * 导航菜单配置，key 与路由 path 一一对应
  * 新增菜单项只需在此处追加配置即可
  */
-export const menuItems: MenuProps['items'] = [{ key: '/', label: '首页' }]
+export const originMenuItems: MenuProps['items'] = [
+  { key: '/', label: '主页' },
+  { key: '/admin/userManage', label: '用户管理' },
+]
