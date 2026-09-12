@@ -33,6 +33,11 @@
                 </a-space>
                 <template #overlay>
                   <a-menu>
+                    <a-menu-item @click="goToUserCenter">
+                      <UserOutlined />
+                      个人中心
+                    </a-menu-item>
+                    <a-menu-divider />
                     <a-menu-item @click="doLogout">
                       <LogoutOutlined />
                       退出登录
@@ -57,7 +62,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
 import { menuItems as menuConfig, siteConfig } from '@/layouts/config'
-import { LogoutOutlined } from '@ant-design/icons-vue'
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 
 // JS 中引入 Store
 import { useLoginUserStore } from '@/stores/loginUser.ts'
@@ -77,6 +82,11 @@ const menuItems = computed<MenuProps['items']>(() => menuConfig)
 // 处理菜单点击：以菜单 key（即路由 path）进行跳转
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
   router.push(String(key))
+}
+
+// 跳转到个人中心
+const goToUserCenter = () => {
+  router.push('/user/center')
 }
 
 // 用户注销
