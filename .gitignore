@@ -5,6 +5,7 @@
 /target/
 /out/
 /build/
+/tmp/
 
 # IDE配置文件（忽略你本地的个性化设置）
 .idea/
