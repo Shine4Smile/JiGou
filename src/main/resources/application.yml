@@ -10,6 +10,12 @@ server:
   servlet:
     context-path: /api
 
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+logging:
+  level:
+    com.simple.jigou.mapper: info
 
 # 对接knife4j接口文档，springdoc-openapi项目配置
 springdoc:
