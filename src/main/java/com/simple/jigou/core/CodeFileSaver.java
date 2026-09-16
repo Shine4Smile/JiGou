@@ -5,6 +5,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.simple.jigou.ai.model.HtmlCodeResult;
 import com.simple.jigou.ai.model.MultiFileCodeResult;
+import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
 
 import java.io.File;
@@ -13,7 +14,7 @@ import java.nio.charset.StandardCharsets;
 public class CodeFileSaver {
 
     // 文件保存根目录
-    private static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
+    private static final String FILE_SAVE_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 保存 HtmlCodeResult

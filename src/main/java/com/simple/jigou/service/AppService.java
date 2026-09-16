@@ -16,6 +16,14 @@ import java.util.List;
  * @author simple
  */
 public interface AppService extends IService<App> {
+    /**
+     * 部署应用
+     *
+     * @param appId     应用id
+     * @param loginUser 登录用户
+     * @return
+     */
+    String deployApp(Long appId, User loginUser);
 
     /**
      * 将AI回复的代码信息提取出来存入文件

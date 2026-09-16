@@ -13,10 +13,7 @@ import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.constant.UserConstant;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
-import com.simple.jigou.model.dto.app.AppAddRequest;
-import com.simple.jigou.model.dto.app.AppEditRequest;
-import com.simple.jigou.model.dto.app.AppQueryRequest;
-import com.simple.jigou.model.dto.app.AppUpdateRequest;
+import com.simple.jigou.model.dto.app.*;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
@@ -49,6 +46,24 @@ public class AppController {
     @Resource
     private UserService userService;
 
+    /**
+     * 应用部署
+     *
+     * @param appDeployRequest 部署请求
+     * @param request          请求
+     * @return 部署 URL
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务部署应用
+        String deployUrl = appService.deployApp(appId, loginUser);
+        return ResultUtils.success(deployUrl);
+    }
 
     /**
      * 应用聊天生成代码（流式 SSE）
