@@ -4,7 +4,9 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.simple.jigou.model.dto.app.AppQueryRequest;
 import com.simple.jigou.model.entity.App;
+import com.simple.jigou.model.entity.User;
 import com.simple.jigou.model.vo.AppVO;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -14,6 +16,16 @@ import java.util.List;
  * @author simple
  */
 public interface AppService extends IService<App> {
+
+    /**
+     * 将AI回复的代码信息提取出来存入文件
+     *
+     * @param appId     应用id
+     * @param message   AI回复信息
+     * @param loginUser 登录用户
+     * @return
+     */
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
 
     /**
      * 构造分页查询条件
