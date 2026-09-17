@@ -16,13 +16,17 @@ import com.simple.jigou.mapper.AppMapper;
 import com.simple.jigou.model.dto.app.AppQueryRequest;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
+import com.simple.jigou.model.enums.ChatHistoryMessageTypeEnum;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import com.simple.jigou.model.vo.AppVO;
 import com.simple.jigou.model.vo.UserVO;
 import com.simple.jigou.service.AppService;
+import com.simple.jigou.service.ChatHistoryService;
 import com.simple.jigou.service.UserService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -31,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -38,11 +43,15 @@ import java.util.stream.Collectors;
  *
  * @author simple
  */
+@Slf4j
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
@@ -113,6 +122,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 1. 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
         // 2. 查询应用信息
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
@@ -126,8 +136,98 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
-        // 5. 调用 AI 生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 5. 保存用户消息（在流式返回前落库，保证对话历史完整）
+        Long userId = loginUser.getId();
+        boolean saved = chatHistoryService.addChatMessage(appId, userId, message, ChatHistoryMessageTypeEnum.USER);
+        ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "保存用户消息失败");
+        // 6. 调用 AI 生成代码，并实时收集 AI 回复内容用于落库
+        StringBuilder aiMessageBuilder = new StringBuilder();
+        // 标记本次生成是否已结束（成功或失败），避免连接断开时重复记录中断信息
+        AtomicBoolean finished = new AtomicBoolean(false);
+        Flux<String> codeStream;
+        try {
+            codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        } catch (Exception e) {
+            // 生成入口就抛异常（没有返回流）：同样记录错误信息，保证对话记录完整
+            finished.set(true);
+            saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
+                    StrUtil.format("AI 生成失败：{}", StrUtil.blankToDefault(e.getMessage(), "未知异常")));
+            throw e;
+        }
+        return codeStream
+                .doOnNext(aiMessageBuilder::append)
+                .doOnComplete(() -> {
+                    // AI 生成成功：保存完整的 AI 回复
+                    finished.set(true);
+                    try {
+                        String aiMessage = aiMessageBuilder.toString();
+                        if (StrUtil.isNotBlank(aiMessage)) {
+                            chatHistoryService.addChatMessage(appId, userId, aiMessage, ChatHistoryMessageTypeEnum.AI);
+                        }
+                    } catch (Exception e) {
+                        // 落库失败不影响已经返回给前端的生成结果，仅记录日志
+                        log.error("保存 AI 消息失败，appId = {}", appId, e);
+                    }
+                })
+                .doOnError(throwable -> {
+                    // AI 生成失败：已生成的内容与错误信息都落库，保证对话历史完整、便于排查问题
+                    finished.set(true);
+                    saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
+                            StrUtil.format("AI 生成失败：{}", StrUtil.blankToDefault(throwable.getMessage(), "未知异常")));
+                })
+                .doOnCancel(() -> {
+                    // 用户点了「停止生成」或连接断开：已生成的内容与中断信息都落库，
+                    // 避免对话历史里只剩用户消息，导致对话记录不完整
+                    if (finished.get()) {
+                        return;
+                    }
+                    saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
+                            "AI 生成已中断（用户停止生成或连接断开）");
+                });
+    }
+
+    /**
+     * 保存 AI 生成失败 / 中断的对话历史（含已生成的部分内容）
+     * 保证即使 AI 回复失败，对话记录也是完整的，同时便于排查问题
+     *
+     * @param appId            应用 id
+     * @param userId           用户 id
+     * @param aiMessageBuilder AI 已生成的内容
+     * @param errorMessage     错误信息
+     */
+    private void saveCodeGenErrorChatHistory(Long appId, Long userId, StringBuilder aiMessageBuilder, String errorMessage) {
+        try {
+            String partialMessage = aiMessageBuilder.toString();
+            if (StrUtil.isNotBlank(partialMessage)) {
+                chatHistoryService.addChatMessage(appId, userId, partialMessage, ChatHistoryMessageTypeEnum.AI);
+            }
+            chatHistoryService.addChatMessage(appId, userId, errorMessage, ChatHistoryMessageTypeEnum.ERROR);
+        } catch (Exception e) {
+            // 落库失败不影响已经返回给前端的生成结果，仅记录日志
+            log.error("保存 AI 错误消息失败，appId = {}", appId, e);
+        }
+    }
+
+    /**
+     * 删除应用，并关联删除该应用下的所有对话历史
+     *
+     * <p>加事务保证「删除对话历史」与「删除应用」两步要么都成功、要么都回滚，
+     * 避免应用删除失败时对话历史已被删除，导致数据不一致
+     *
+     * @param appId 应用 id
+     * @return 是否删除成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteApp(Long appId) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 2. 关联删除该应用下的所有对话历史（该应用没有对话历史时返回 false 属正常情况，因此不校验返回值）
+        chatHistoryService.remove(QueryWrapper.create().eq("appId", appId));
+        // 3. 删除应用本身（失败则抛出异常，由事务回滚上面的对话历史删除）
+        boolean result = this.removeById(appId);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除应用失败");
+        return true;
     }
 
     /**

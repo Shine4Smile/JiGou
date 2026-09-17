@@ -59,4 +59,12 @@ public interface AppService extends IService<App> {
      * @return 脱敏后的应用信息
      */
     AppVO getAppVO(App app);
+
+    /**
+     * 删除应用，并关联删除该应用下的所有对话历史（避免产生冗余数据）
+     *
+     * @param appId 应用 id
+     * @return 是否删除成功
+     */
+    boolean deleteApp(Long appId);
 }

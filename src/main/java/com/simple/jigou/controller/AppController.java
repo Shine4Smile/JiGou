@@ -170,7 +170,8 @@ public class AppController {
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
         // 校验是否为当前用户的应用
         ThrowUtils.throwIf(!loginUser.getId().equals(oldApp.getUserId()), ErrorCode.NO_AUTH_ERROR, "无权限删除该应用");
-        boolean result = appService.removeById(appId);
+        // 删除应用，并关联删除该应用下的所有对话历史
+        boolean result = appService.deleteApp(appId);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
     }
@@ -250,7 +251,7 @@ public class AppController {
         // 判断是否存在
         App oldApp = appService.getById(appId);
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        boolean result = appService.removeById(deleteRequest.getId());
+        boolean result = appService.deleteApp(deleteRequest.getId());
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
     }
