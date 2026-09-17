@@ -1,21 +1,21 @@
 <template>
   <div id="appManagePage">
     <!-- 搜索区：支持根据除时间外的任意字段查询 -->
-    <a-card class="panel search-panel" :bordered="false">
+    <a-card class="app-panel search-panel" :bordered="false">
       <a-form layout="inline" :model="searchParams" class="search-form" @finish="doSearch">
         <a-form-item label="应用名称">
           <a-input v-model:value="searchParams.appName" placeholder="请输入应用名称" allow-clear />
         </a-form-item>
-        <a-form-item label="应用 id">
-          <a-input v-model:value="searchId" placeholder="请输入应用 id" allow-clear />
-        </a-form-item>
-        <a-form-item label="初始提示词">
-          <a-input
-            v-model:value="searchParams.initPrompt"
-            placeholder="请输入初始提示词"
-            allow-clear
-          />
-        </a-form-item>
+        <!--        <a-form-item label="应用 id">-->
+        <!--          <a-input v-model:value="searchId" placeholder="请输入应用 id" allow-clear />-->
+        <!--        </a-form-item>-->
+        <!--        <a-form-item label="初始提示词">-->
+        <!--          <a-input-->
+        <!--            v-model:value="searchParams.initPrompt"-->
+        <!--            placeholder="请输入初始提示词"-->
+        <!--            allow-clear-->
+        <!--          />-->
+        <!--        </a-form-item>-->
         <a-form-item label="生成类型">
           <a-select
             v-model:value="searchParams.codeGenType"
@@ -25,13 +25,13 @@
             style="width: 150px"
           />
         </a-form-item>
-        <a-form-item label="部署标识">
-          <a-input
-            v-model:value="searchParams.deployKey"
-            placeholder="请输入部署标识"
-            allow-clear
-          />
-        </a-form-item>
+        <!--        <a-form-item label="部署标识">-->
+        <!--          <a-input-->
+        <!--            v-model:value="searchParams.deployKey"-->
+        <!--            placeholder="请输入部署标识"-->
+        <!--            allow-clear-->
+        <!--          />-->
+        <!--        </a-form-item>-->
         <a-form-item label="优先级">
           <a-select
             v-model:value="searchParams.priority"
@@ -41,9 +41,9 @@
             style="width: 150px"
           />
         </a-form-item>
-        <a-form-item label="创建用户 id">
-          <a-input v-model:value="searchUserId" placeholder="请输入创建用户 id" allow-clear />
-        </a-form-item>
+        <!--        <a-form-item label="创建用户 id">-->
+        <!--          <a-input v-model:value="searchUserId" placeholder="请输入创建用户 id" allow-clear />-->
+        <!--        </a-form-item>-->
         <a-form-item>
           <a-space :size="8">
             <a-button type="primary" html-type="submit" :loading="loading">
@@ -60,7 +60,7 @@
     </a-card>
 
     <!-- 列表区 -->
-    <a-card class="panel table-panel" :bordered="false">
+    <a-card class="app-panel table-panel" :bordered="false">
       <template #title>
         <span class="panel-title">应用列表</span>
         <span class="panel-subtitle">管理员可管理全部应用，每页数量不限</span>
@@ -169,8 +169,8 @@
 <script lang="ts" setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
 import type { TableColumnsType, TablePaginationConfig } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -383,14 +383,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-/* 卡片容器：白底轻投影，与浅灰页面背景形成层次 */
-.panel {
-  border-radius: 8px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 1px 6px -1px rgba(0, 0, 0, 0.03);
 }
 
 .search-panel :deep(.ant-card-body) {

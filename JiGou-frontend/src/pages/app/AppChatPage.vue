@@ -15,11 +15,12 @@
                 <template #icon><EyeOutlined /></template>
                 <span>查看详情</span>
               </a-menu-item>
+              <a-menu-item v-if="canManage" key="edit">
+                <template #icon><EditOutlined /></template>
+                <span>编辑应用信息</span>
+              </a-menu-item>
+              <!-- 删除仅限创建者本人 -->
               <template v-if="isOwner">
-                <a-menu-item key="edit">
-                  <template #icon><EditOutlined /></template>
-                  <span>编辑应用信息</span>
-                </a-menu-item>
                 <a-menu-divider />
                 <a-menu-item key="delete" danger>
                   <template #icon><DeleteOutlined /></template>
@@ -51,7 +52,7 @@
     <!-- 核心内容区：左对话区域，右网页展示区域 -->
     <div class="chat-body">
       <!-- 对话区域 -->
-      <div class="panel chat-panel">
+      <div class="chat-panel">
         <div ref="messageListRef" class="chat-panel__messages">
           <a-empty
             v-if="!appLoading && !messages.length"
@@ -73,33 +74,14 @@
           <a-textarea
             v-model:value="inputMessage"
             class="chat-panel__textarea"
-            placeholder="描述越详细的页面，生成效果越符合预期，可以一步一步迭代优化"
+            placeholder="请描述你想生成的网站，越详细效果越贴合想法"
             :auto-size="{ minRows: 3, maxRows: 6 }"
             :disabled="!isOwner || streaming"
             :maxlength="2000"
             @press-enter="onPressEnter"
           />
           <div class="chat-panel__footer">
-            <div class="chat-panel__tools">
-              <a-tooltip title="暂未开放">
-                <a-button type="text" size="small" disabled>
-                  <template #icon><PaperClipOutlined /></template>
-                  <span>上传</span>
-                </a-button>
-              </a-tooltip>
-              <a-tooltip title="暂未开放">
-                <a-button type="text" size="small" disabled>
-                  <template #icon><EditOutlined /></template>
-                  <span>编辑</span>
-                </a-button>
-              </a-tooltip>
-              <a-tooltip title="暂未开放">
-                <a-button type="text" size="small" disabled>
-                  <template #icon><HighlightOutlined /></template>
-                  <span>优化</span>
-                </a-button>
-              </a-tooltip>
-            </div>
+            <span class="chat-panel__hint">Enter 发送 / Shift + Enter 换行</span>
             <a-button v-if="streaming" size="middle" danger @click="stopGenerate">
               停止生成
             </a-button>
@@ -119,7 +101,7 @@
       </div>
 
       <!-- 网页展示区域：流式接口全部返回后展示 -->
-      <div class="panel preview-panel">
+      <div class="preview-panel">
         <div class="preview-panel__header">
           <span class="preview-panel__title">
             <GlobalOutlined />
@@ -194,9 +176,7 @@ import {
   EditOutlined,
   EyeOutlined,
   GlobalOutlined,
-  HighlightOutlined,
   LinkOutlined,
-  PaperClipOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { deleteApp, deployApp, getAppVoById } from '@/api/appController.ts'
@@ -204,6 +184,7 @@ import AppChatMessage from '@/components/AppChatMessage.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
+import ACCESS_ENUM from '@/access/accessEnum'
 import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR } from '@/constants/app'
 import { asApiId } from '@/utils/apiId'
 import { getPreviewUrl, isPreviewAvailable } from '@/utils/appUrl'
@@ -255,6 +236,12 @@ const isOwner = computed(
     !!loginUserStore.loginUser.id &&
     String(app.value.userId) === String(loginUserStore.loginUser.id),
 )
+
+/** 是否管理员：管理员可以在对话页进入「编辑应用信息」（生成 / 部署仍仅限创建者） */
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === ACCESS_ENUM.ADMIN)
+
+/** 是否展示「编辑应用信息」入口：创建者本人或管理员 */
+const canManage = computed(() => isOwner.value || isAdmin.value)
 const hasDeployed = computed(() => !!app.value.deployKey)
 const previewUrl = computed(() => getPreviewUrl(app.value.codeGenType, appId))
 /** 追加时间戳参数，避免浏览器复用缓存的旧页面 */
@@ -531,26 +518,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /*
- * 高度计算：视口高度 - 顶部导航栏(64) - 内容区上下内边距(24*2) - 页脚高度，约 180px，
- * 保证对话区与预览区撑满剩余可视高度；min-height 兜底，避免小屏下内容区被压扁
+ * 高度计算：视口高度 - 顶部导航栏(64) - 页脚高度(16 + 22 + 16 = 54)
+ * 页面已通过路由 meta.flush 去掉内容区内边距，左右两栏因此能撑满一屏
  */
 #appChatPage {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: calc(100vh - 180px);
-  min-height: 520px;
-}
-
-/* 卡片容器：白底轻投影，与用户管理页保持一致 */
-.panel {
-  display: flex;
-  flex-direction: column;
+  height: calc(100vh - var(--header-height) - var(--footer-height));
+  min-height: 480px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 1px 6px -1px rgba(0, 0, 0, 0.03);
 }
 
 /* 顶部栏：应用名称 + 部署按钮 */
@@ -560,12 +536,9 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 16px;
   flex: none;
-  padding: 12px 16px;
+  padding: 12px 20px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 1px 6px -1px rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid #eef0f4;
 }
 
 .chat-header__left {
@@ -603,40 +576,45 @@ onBeforeUnmount(() => {
   color: rgba(0, 0, 0, 0.45);
 }
 
-/* 核心内容区：左对话、右预览 */
+/* 核心内容区：左侧对话区与右侧预览区按 2 : 3 分配宽度 */
 .chat-body {
   display: flex;
   flex: 1;
-  gap: 12px;
   min-height: 0;
 }
 
 .chat-panel {
-  flex: 0 0 40%;
+  display: flex;
+  flex-direction: column;
+  flex: 2 1 0;
   min-width: 320px;
   min-height: 0;
+  border-right: 1px solid #eef0f4;
 }
 
 .preview-panel {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 3 1 0;
   min-width: 0;
   min-height: 0;
 }
 
 .chat-panel__messages {
   flex: 1;
-  padding: 16px;
+  padding: 20px 20px 8px;
   overflow-y: auto;
 }
 
 .chat-panel__input {
   flex: none;
   padding: 12px 16px 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #eef0f4;
 }
 
 .chat-panel__textarea {
   resize: none;
+  border-radius: 10px;
 }
 
 .chat-panel__footer {
@@ -644,13 +622,12 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
-.chat-panel__tools {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.chat-panel__hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
 }
 
 .chat-panel__tip {
@@ -666,7 +643,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex: none;
   padding: 10px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #eef0f4;
 }
 
 .preview-panel__title {
@@ -686,7 +663,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   background: #fafafa;
-  border-radius: 0 0 8px 8px;
 }
 
 .preview-panel__iframe {
@@ -727,6 +703,7 @@ onBeforeUnmount(() => {
 @media (max-width: 992px) {
   #appChatPage {
     height: auto;
+    min-height: 0;
   }
 
   .chat-body {
@@ -737,6 +714,8 @@ onBeforeUnmount(() => {
     flex: none;
     min-width: 0;
     height: 60vh;
+    border-right: none;
+    border-bottom: 1px solid #eef0f4;
   }
 
   .preview-panel {

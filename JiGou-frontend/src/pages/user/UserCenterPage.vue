@@ -26,7 +26,9 @@
               {{ roleLabel }}
             </a-tag>
           </div>
-          <div class="profile__account">账号：{{ loginUserStore.loginUser.userAccount ?? '-' }}</div>
+          <div class="profile__account">
+            账号：{{ loginUserStore.loginUser.userAccount ?? '-' }}
+          </div>
           <div class="profile__bio">
             {{
               loginUserStore.loginUser.userProfile ||

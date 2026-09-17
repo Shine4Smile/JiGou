@@ -1,7 +1,7 @@
 <template>
   <div id="appEditPage">
     <!-- 无权限 / 应用不存在 -->
-    <a-card v-if="noPermission" class="panel" :bordered="false">
+    <a-card v-if="noPermission" class="app-panel" :bordered="false">
       <a-result status="403" title="无法编辑该应用" :sub-title="noPermissionTip">
         <template #extra>
           <a-button type="primary" @click="goBack">返回</a-button>
@@ -12,7 +12,7 @@
 
     <template v-else>
       <!-- 编辑表单：普通用户仅可修改应用名称，管理员可修改名称 / 封面 / 优先级 -->
-      <a-card class="panel" :bordered="false">
+      <a-card class="app-panel" :bordered="false">
         <template #title>
           <span class="panel-title">应用信息修改</span>
         </template>
@@ -92,7 +92,7 @@
       </a-card>
 
       <!-- 只读信息：便于用户确认当前应用状态 -->
-      <a-card class="panel" :bordered="false">
+      <a-card class="app-panel" :bordered="false">
         <template #title>
           <span class="panel-title">应用信息</span>
         </template>
@@ -281,14 +281,6 @@ onMounted(() => {
   gap: 16px;
   max-width: 960px;
   margin: 0 auto;
-}
-
-/* 卡片容器：白底轻投影，与用户管理页保持一致 */
-.panel {
-  border-radius: 8px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 1px 6px -1px rgba(0, 0, 0, 0.03);
 }
 
 .panel-title {

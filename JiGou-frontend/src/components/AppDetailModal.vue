@@ -35,7 +35,16 @@
           formatDateTime(app.deployedTime)
         }}</a-descriptions-item>
         <a-descriptions-item label="创建用户">
-          {{ app.userVO?.userName || app.userVO?.userAccount || '-' }}
+          <span class="detail-user">
+            <a-avatar
+              :size="22"
+              class="detail-user__avatar"
+              :src="app.userVO?.userAvatar || undefined"
+            >
+              <template #icon><UserOutlined /></template>
+            </a-avatar>
+            <span>{{ app.userVO?.userName || app.userVO?.userAccount || '-' }}</span>
+          </span>
         </a-descriptions-item>
         <a-descriptions-item label="创建时间">{{
           formatDateTime(app.createTime)
@@ -50,6 +59,7 @@
 </template>
 
 <script lang="ts" setup>
+import { UserOutlined } from '@ant-design/icons-vue'
 import { CODE_GEN_TYPE_LABEL, DEFAULT_APP_PRIORITY, GOOD_APP_PRIORITY } from '@/constants/app'
 import { formatDateTime } from '@/utils/time'
 
@@ -85,5 +95,17 @@ const emit = defineEmits<{
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 创建用户：头像 + 昵称 */
+.detail-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-user__avatar {
+  flex: none;
+  background: var(--brand-color);
 }
 </style>

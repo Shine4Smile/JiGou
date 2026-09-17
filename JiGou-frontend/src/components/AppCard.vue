@@ -13,8 +13,8 @@
     <div class="app-card__body">
       <div class="app-card__title-row">
         <span class="app-card__title" :title="app.appName">{{ app.appName || '未命名应用' }}</span>
-        <!-- 仅应用创建者可管理自己的应用，用包裹元素阻止冒泡（避免点击时同时进入对话页） -->
-        <div v-if="isOwner" class="app-card__more-wrap" @click.stop>
+        <!-- 创建者与管理员可管理：用包裹元素阻止冒泡（避免点击时同时进入对话页） -->
+        <div v-if="canManage" class="app-card__more-wrap" @click.stop>
           <a-dropdown placement="bottomRight" :trigger="['click']">
             <a-button type="text" size="small" class="app-card__more">
               <template #icon><MoreOutlined /></template>
@@ -29,15 +29,27 @@
                   <template #icon><EditOutlined /></template>
                   <span>编辑应用信息</span>
                 </a-menu-item>
-                <a-menu-divider />
-                <a-menu-item key="delete" danger>
-                  <template #icon><DeleteOutlined /></template>
-                  <span>删除应用</span>
-                </a-menu-item>
+                <!-- 删除仅限创建者本人 -->
+                <template v-if="isOwner">
+                  <a-menu-divider />
+                  <a-menu-item key="delete" danger>
+                    <template #icon><DeleteOutlined /></template>
+                    <span>删除应用</span>
+                  </a-menu-item>
+                </template>
               </a-menu>
             </template>
           </a-dropdown>
         </div>
+      </div>
+
+      <!-- 创建者信息：接口返回的 userVO 中带昵称与头像 -->
+      <div class="app-card__author">
+        <a-avatar :size="22" class="app-card__avatar" :src="app.userVO?.userAvatar || undefined">
+          <template #icon><UserOutlined /></template>
+        </a-avatar>
+        <span class="app-card__author-name" :title="authorName">{{ authorName }}</span>
+        <a-tag v-if="isFeatured" class="app-card__featured" color="gold">精选</a-tag>
       </div>
 
       <div class="app-card__meta">
@@ -53,10 +65,17 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import type { MenuProps } from 'ant-design-vue'
-import { DeleteOutlined, EditOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  MoreOutlined,
+  UserOutlined,
+} from '@ant-design/icons-vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR } from '@/constants/app'
+import ACCESS_ENUM from '@/access/accessEnum'
+import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR, GOOD_APP_PRIORITY } from '@/constants/app'
 import { formatRelativeTime } from '@/utils/time'
 
 const props = defineProps<{
@@ -82,6 +101,20 @@ const isOwner = computed(
     !!loginUserStore.loginUser.id &&
     String(props.app.userId) === String(loginUserStore.loginUser.id),
 )
+
+/** 是否管理员：管理员可以编辑任意应用的应用信息 */
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === ACCESS_ENUM.ADMIN)
+
+/** 是否展示管理入口：创建者本人或管理员 */
+const canManage = computed(() => isOwner.value || isAdmin.value)
+
+/** 创建者展示名：优先昵称，其次账号，都没有时兜底为「未知用户」 */
+const authorName = computed(
+  () => props.app.userVO?.userName || props.app.userVO?.userAccount || '未知用户',
+)
+
+/** 是否为精选应用（后端以 priority = 99 标记精选） */
+const isFeatured = computed(() => props.app.priority === GOOD_APP_PRIORITY)
 
 // 下拉菜单：将操作抛给父组件处理（父组件负责跳转 / 调接口）
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -188,6 +221,37 @@ const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
 
 .app-card__more {
   color: rgba(0, 0, 0, 0.45);
+}
+
+/* 创建者信息行：头像 + 昵称（+ 精选标记） */
+.app-card__author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.app-card__avatar {
+  flex: none;
+  background: var(--brand-color);
+}
+
+.app-card__author-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app-card__featured {
+  flex: none;
+  margin-inline-end: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 18px;
+  border-radius: 9px;
 }
 
 .app-card__meta {

@@ -17,7 +17,8 @@ const router = createRouter({
       path: '/',
       name: '主页',
       component: HomePage,
-      meta: { access: AccessEnum.NOT_LOGIN },
+      // flush：主页需要 100% 宽的渐变背景，由页面自己控制留白
+      meta: { access: AccessEnum.NOT_LOGIN, flush: true },
     },
     {
       path: '/user/login',
@@ -41,7 +42,8 @@ const router = createRouter({
       path: '/app/chat/:appId',
       name: '应用生成对话',
       component: AppChatPage,
-      meta: { access: AccessEnum.USER },
+      // flush：对话页需要撑满一屏（左右两栏不留额外间距）
+      meta: { access: AccessEnum.USER, flush: true },
     },
     {
       path: '/app/edit/:appId',

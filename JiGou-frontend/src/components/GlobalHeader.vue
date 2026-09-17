@@ -121,12 +121,17 @@ const menuItems = computed<MenuProps['items']>(() => {
 </script>
 
 <style scoped>
+/* 顶栏：sticky 常驻，半透明 + 毛玻璃，与页面渐变背景过渡更自然 */
 .header {
-  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--header-height);
   padding: 0 24px;
   line-height: normal;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  backdrop-filter: saturate(180%) blur(10px);
 }
 
 /* 栅格行撑满头部高度，配合 align="middle" 实现垂直居中 */
@@ -138,6 +143,7 @@ const menuItems = computed<MenuProps['items']>(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-right: 24px;
 }
 
 .logo {
@@ -153,10 +159,51 @@ const menuItems = computed<MenuProps['items']>(() => {
   white-space: nowrap;
 }
 
-/* 菜单背景透明、去掉默认下边框，与头部融为一体 */
+/* 导航菜单：背景透明，导航项做成胶囊按钮（去掉 antd 默认下划线指示条） */
 .header-menu {
   background: transparent;
   border-bottom: none;
+  line-height: normal;
+}
+
+.header-menu :deep(.ant-menu-item) {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  margin: 0 4px;
+  padding: 0 16px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.68);
+  border-radius: 18px;
+  transition:
+    color 0.2s,
+    background-color 0.2s;
+}
+
+/* 去掉默认的底部指示条 */
+.header-menu :deep(.ant-menu-item::after) {
+  display: none;
+}
+
+.header-menu :deep(.ant-menu-title-content) {
+  line-height: 1;
+}
+
+.header-menu :deep(.ant-menu-item .anticon) {
+  font-size: 15px;
+}
+
+.header-menu :deep(.ant-menu-item:hover) {
+  color: var(--brand-color);
+  background: #f0f6ff;
+}
+
+.header-menu :deep(.ant-menu-item-selected) {
+  font-weight: 600;
+  color: var(--brand-color);
+  background: #e6f4ff;
 }
 
 .user-actions {
@@ -164,13 +211,36 @@ const menuItems = computed<MenuProps['items']>(() => {
   align-items: center;
 }
 
+/* 用户区：头像 + 昵称做成可点击胶囊，hover 有底色反馈 */
+.user-actions :deep(.ant-space) {
+  padding: 4px 10px 4px 4px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.75);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.user-actions :deep(.ant-space:hover) {
+  background: #f5f7fc;
+}
+
 @media (max-width: 768px) {
   .header {
     padding: 0 12px;
   }
 
+  .header-left {
+    padding-right: 12px;
+  }
+
   .site-title {
     font-size: 16px;
+  }
+
+  .header-menu :deep(.ant-menu-item) {
+    margin: 0 2px;
+    padding: 0 10px;
   }
 }
 </style>

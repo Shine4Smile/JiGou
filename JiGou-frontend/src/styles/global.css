@@ -1,0 +1,64 @@
+/**
+ * 全局设计规范
+ *
+ * 统一各页面的容器宽度、卡片材质（圆角 / 投影）与布局高度常量，
+ * 页面内只需要引用变量或 .app-panel / .page-container 等工具类即可保持风格一致。
+ */
+:root {
+  /* 布局高度：与 GlobalHeader(64) / GlobalFooter(16 + 22 + 16 = 54) 保持一致 */
+  --header-height: 64px;
+  --footer-height: 54px;
+
+  /* 页面内容容器与背景 */
+  --page-max-width: 1200px;
+  --page-bg: #f5f7fc;
+
+  /* 卡片材质：全站统一的圆角与投影 */
+  --panel-radius: 16px;
+  --panel-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  --panel-shadow-hover: 0 12px 32px rgba(15, 23, 42, 0.1);
+
+  /* 品牌色 */
+  --brand-color: #1677ff;
+  --brand-color-2: #6366f1;
+  --brand-gradient: linear-gradient(135deg, #1677ff 0%, #6366f1 100%);
+}
+
+/**
+ * 统一卡片材质
+ * a-card 与普通 div 都可直接使用；.app-panel.ant-card 用于覆盖 antd 默认的 12px 圆角
+ */
+.app-panel,
+.app-panel.ant-card {
+  background: #fff;
+  border: none;
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow);
+}
+
+/* 统一内容容器：限制最大宽度并水平居中 */
+.page-container {
+  width: 100%;
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+}
+
+/* 区块标题与说明文字 */
+.section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.section-subtitle {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* 示例提示词浮层：完整提示词约 100 字，加宽到 420px 避免折行过多（antd 默认 250px） */
+.example-tip.ant-tooltip {
+  max-width: 420px;
+}
