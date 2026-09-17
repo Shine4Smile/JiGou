@@ -16,5 +16,6 @@ export const siteConfig = {
  */
 export const originMenuItems: MenuProps['items'] = [
   { key: '/', label: '主页' },
+  { key: '/admin/appManage', label: '应用管理' },
   { key: '/admin/userManage', label: '用户管理' },
 ]

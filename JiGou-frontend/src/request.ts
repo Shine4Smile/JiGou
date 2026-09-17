@@ -1,9 +1,15 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
 
+/**
+ * 后端接口基础地址
+ * 除 axios 请求外，SSE 流式对话、静态资源预览地址也需要复用该地址，故统一导出
+ */
+export const API_BASE_URL = 'http://localhost:8181/api'
+
 // 创建 Axios 实例
 const myAxios = axios.create({
-  baseURL: 'http://localhost:8181/api',
+  baseURL: API_BASE_URL,
   timeout: 60000,
   withCredentials: true,
 })
