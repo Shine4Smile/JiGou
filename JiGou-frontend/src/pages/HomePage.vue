@@ -245,8 +245,8 @@ const doCreate = async () => {
     if (res.data.code === 0 && appId) {
       prompt.value = ''
       // 后端 Long 以字符串返回，直接透传（转 Number 会造成雪花 id 精度丢失）
-      // autoStart 用于告知对话页：进入后自动把初始提示词发送给 AI
-      router.push({ path: `/app/chat/${appId}`, query: { autoStart: '1' } })
+      // 对话页会在「自己的应用且没有对话历史」时自动发送初始提示词
+      router.push(`/app/chat/${appId}`)
     } else {
       message.error('创建应用失败：' + (res.data.message ?? '请稍后重试'))
     }

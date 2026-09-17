@@ -30,7 +30,7 @@ export async function deleteAppByAdmin(body: API.DeleteRequest, options?: { [key
 export async function getAppById(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getAppByIdParams,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.BaseResponseAppVO>('/app/admin/get', {
     method: 'GET',
@@ -56,7 +56,7 @@ export async function listAppVoByPage(body: API.AppQueryRequest, options?: { [ke
 /** 此处后端没有提供注释 POST /app/admin/update */
 export async function updateAppByAdmin(
   body: API.AppUpdateRequest,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.BaseResponseBoolean>('/app/admin/update', {
     method: 'POST',
@@ -72,7 +72,7 @@ export async function updateAppByAdmin(
 export async function chatToGenCode(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.chatToGenCodeParams,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.ServerSentEventString[]>('/app/chat/gen/code', {
     method: 'GET',
@@ -123,7 +123,7 @@ export async function editApp(body: API.AppEditRequest, options?: { [key: string
 export async function getAppVoById(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getAppVOByIdParams,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.BaseResponseAppVO>('/app/get/vo', {
     method: 'GET',
@@ -137,7 +137,7 @@ export async function getAppVoById(
 /** 此处后端没有提供注释 POST /app/list/featured/vo */
 export async function listFeaturedAppVoByPage(
   body: API.AppQueryRequest,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.BaseResponsePageAppVO>('/app/list/featured/vo', {
     method: 'POST',
@@ -152,7 +152,7 @@ export async function listFeaturedAppVoByPage(
 /** 此处后端没有提供注释 POST /app/list/page/vo */
 export async function listMyAppVoByPage(
   body: API.AppQueryRequest,
-  options?: { [key: string]: any },
+  options?: { [key: string]: any }
 ) {
   return request<API.BaseResponsePageAppVO>('/app/list/page/vo', {
     method: 'POST',

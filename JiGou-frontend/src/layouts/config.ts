@@ -1,6 +1,11 @@
 import { h } from 'vue'
 import type { MenuProps } from 'ant-design-vue'
-import { AppstoreOutlined, HomeOutlined, TeamOutlined } from '@ant-design/icons-vue'
+import {
+  AppstoreOutlined,
+  HomeOutlined,
+  MessageOutlined,
+  TeamOutlined,
+} from '@ant-design/icons-vue'
 
 /**
  * 站点基础配置
@@ -21,5 +26,6 @@ export const siteConfig = {
 export const originMenuItems: MenuProps['items'] = [
   { key: '/', label: '主页', icon: () => h(HomeOutlined) },
   { key: '/admin/appManage', label: '应用管理', icon: () => h(AppstoreOutlined) },
+  { key: '/admin/chatHistoryManage', label: '对话管理', icon: () => h(MessageOutlined) },
   { key: '/admin/userManage', label: '用户管理', icon: () => h(TeamOutlined) },
 ]

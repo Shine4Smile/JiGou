@@ -54,19 +54,28 @@
       <!-- 对话区域 -->
       <div class="chat-panel">
         <div ref="messageListRef" class="chat-panel__messages">
-          <a-empty
-            v-if="!appLoading && !messages.length"
-            description="输入提示词，开始生成你的网站"
-          />
-          <AppChatMessage
-            v-for="item in messages"
-            :key="item.id"
-            :role="item.role"
-            :content="item.content"
-            :streaming="item.streaming"
-            :error="item.error"
-            :time="item.time"
-          />
+          <!-- 加载更多：历史消息超过一页时展示在消息上方，点击后用游标向前加载 -->
+          <div v-if="hasMore" class="chat-panel__more">
+            <a-button type="link" size="small" :loading="moreLoading" @click="loadMoreHistory">
+              <template #icon><HistoryOutlined /></template>
+              <span>加载更多历史消息</span>
+            </a-button>
+          </div>
+          <a-spin :spinning="historyLoading">
+            <a-empty
+              v-if="!appLoading && !historyLoading && !messages.length"
+              description="输入提示词，开始生成你的网站"
+            />
+            <AppChatMessage
+              v-for="item in messages"
+              :key="item.id"
+              :role="item.role"
+              :content="item.content"
+              :streaming="item.streaming"
+              :error="item.error"
+              :time="item.time"
+            />
+          </a-spin>
         </div>
 
         <!-- 用户消息输入框 -->
@@ -176,16 +185,23 @@ import {
   EditOutlined,
   EyeOutlined,
   GlobalOutlined,
+  HistoryOutlined,
   LinkOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { deleteApp, deployApp, getAppVoById } from '@/api/appController.ts'
+import { listAppChatHistory } from '@/api/chatHistoryController.ts'
 import AppChatMessage from '@/components/AppChatMessage.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import ACCESS_ENUM from '@/access/accessEnum'
 import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR } from '@/constants/app'
+import {
+  CHAT_MESSAGE_TYPE,
+  DEFAULT_CHAT_HISTORY_PAGE_SIZE,
+  GENERATED_HISTORY_SIZE,
+} from '@/constants/chatHistory'
 import { asApiId } from '@/utils/apiId'
 import { getPreviewUrl, isPreviewAvailable } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
@@ -295,6 +311,105 @@ const loadApp = async (silent = false) => {
     return false
   } finally {
     appLoading.value = false
+  }
+}
+
+/* ------------------------------ 对话历史 ------------------------------ */
+
+/** 最近一页历史消息加载中（首次进入页面） */
+const historyLoading = ref(false)
+/** 向前加载更多历史消息中 */
+const moreLoading = ref(false)
+/** 是否还有更早的历史消息（为 true 时展示「加载更多」） */
+const hasMore = ref(false)
+/** 下一页游标：本页最早一条消息的创建时间与 id（后端按时间 + id 兜底，避免同一秒的消息漏查） */
+const nextLastCreateTime = ref<string>()
+const nextLastId = ref<number>()
+
+/**
+ * 对话历史（ChatHistoryVO）转为页面消息
+ *
+ * 后端 messageType：user 用户消息、ai AI 消息、error AI 生成失败的记录（按 AI 消息展示并标记失败）
+ */
+const toChatMessage = (chatHistory: API.ChatHistoryVO): ChatMessage => {
+  const isUserMessage = chatHistory.messageType === CHAT_MESSAGE_TYPE.USER
+  return {
+    id: `h-${chatHistory.id ?? ++messageSeed}`,
+    role: isUserMessage ? 'user' : 'ai',
+    content: chatHistory.message ?? '',
+    error: chatHistory.messageType === CHAT_MESSAGE_TYPE.ERROR,
+    time: chatHistory.createTime,
+  }
+}
+
+/**
+ * 加载最近一页对话历史（默认 10 条，后端按创建时间升序返回）
+ *
+ * 进入页面时先加载一次，加载完再决定是否自动发送初始提示词
+ */
+const loadHistory = async () => {
+  historyLoading.value = true
+  try {
+    const res = await listAppChatHistory({
+      appId: asApiId(appId),
+      pageSize: DEFAULT_CHAT_HISTORY_PAGE_SIZE,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      const historyPage = res.data.data
+      messages.value = (historyPage.records ?? []).map(toChatMessage)
+      hasMore.value = historyPage.hasMore ?? false
+      nextLastCreateTime.value = historyPage.nextLastCreateTime
+      nextLastId.value = historyPage.nextLastId
+      return
+    }
+    // 非创建者且非管理员：后端返回无权限，不展示历史（不阻塞继续浏览）
+    if (res.data.code === 40101) {
+      message.warning('无权限查看该应用的对话历史')
+      return
+    }
+    message.error('获取对话历史失败：' + (res.data.message ?? '请稍后重试'))
+  } catch {
+    message.error('获取对话历史失败，请检查网络后重试')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+/** 向前加载更多历史消息：用上一页返回的游标拉取更早的一页，并保持当前浏览位置 */
+const loadMoreHistory = async () => {
+  if (!hasMore.value || moreLoading.value) {
+    return
+  }
+  moreLoading.value = true
+  const listEl = messageListRef.value
+  const prevScrollHeight = listEl?.scrollHeight ?? 0
+  const prevScrollTop = listEl?.scrollTop ?? 0
+  try {
+    const res = await listAppChatHistory({
+      appId: asApiId(appId),
+      pageSize: DEFAULT_CHAT_HISTORY_PAGE_SIZE,
+      lastCreateTime: nextLastCreateTime.value,
+      lastId: nextLastId.value ? asApiId(nextLastId.value) : undefined,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      const historyPage = res.data.data
+      // 更早的消息插到列表最前面，与已加载的消息拼成完整的对话记录
+      messages.value = [...(historyPage.records ?? []).map(toChatMessage), ...messages.value]
+      hasMore.value = historyPage.hasMore ?? false
+      nextLastCreateTime.value = historyPage.nextLastCreateTime
+      nextLastId.value = historyPage.nextLastId
+      await nextTick()
+      // 新增内容的高度补偿到滚动位置上，避免视图跳到列表顶部
+      if (listEl) {
+        listEl.scrollTop = listEl.scrollHeight - prevScrollHeight + prevScrollTop
+      }
+      return
+    }
+    message.error('加载更多历史消息失败：' + (res.data.message ?? '请稍后重试'))
+  } catch {
+    message.error('加载更多历史消息失败，请检查网络后重试')
+  } finally {
+    moreLoading.value = false
   }
 }
 
@@ -497,14 +612,17 @@ onMounted(async () => {
     router.replace('/')
     return
   }
-  // 历史应用可能已经生成过代码，先探测一次预览资源，避免 iframe 请求不存在的目录
-  previewVisible.value = await isPreviewAvailable(previewUrl.value)
+  // 1. 先加载最近一页对话历史（默认 10 条），加载完再决定是否自动发送初始提示词
+  await loadHistory()
+  // 2. 预览区：已有至少 2 条对话记录（用户消息 + AI 回复）说明生成过网站；
+  //    没有历史记录时再探测一次预览资源，避免 iframe 请求不存在的目录
+  previewVisible.value =
+    messages.value.length >= GENERATED_HISTORY_SIZE || (await isPreviewAvailable(previewUrl.value))
   await nextTick()
   scrollToBottom()
-
-  // 从首页创建应用跳转过来：自动把初始提示词作为第一条消息发送给 AI
-  if (route.query.autoStart === '1' && app.value.initPrompt) {
-    await router.replace({ path: route.path })
+  // 3. 自己的应用且没有任何对话历史时，才自动把初始提示词作为第一条消息发送给 AI
+  //    （浏览他人应用时不会自动触发对话）
+  if (isOwner.value && !messages.value.length && app.value.initPrompt) {
     await send(app.value.initPrompt)
   }
 })
@@ -604,6 +722,13 @@ onBeforeUnmount(() => {
   flex: 1;
   padding: 20px 20px 8px;
   overflow-y: auto;
+}
+
+/* 加载更多：历史消息超过一页时展示在消息列表最上方 */
+.chat-panel__more {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
 }
 
 .chat-panel__input {
