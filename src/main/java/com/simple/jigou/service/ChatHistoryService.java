@@ -8,6 +8,7 @@ import com.simple.jigou.model.entity.ChatHistory;
 import com.simple.jigou.model.enums.ChatHistoryMessageTypeEnum;
 import com.simple.jigou.model.vo.ChatHistoryPageVO;
 import com.simple.jigou.model.vo.ChatHistoryVO;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +19,8 @@ import java.util.List;
  * @author simple
  */
 public interface ChatHistoryService extends IService<ChatHistory> {
+
+    int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount);
 
     /**
      * 添加对话消息

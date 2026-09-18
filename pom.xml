@@ -30,12 +30,26 @@
         <java.version>21</java.version>
     </properties>
     <dependencies>
+        <!-- 引入本地缓存，用来缓存不同应用（appId）创建的AI service实例，避免重复创建 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- 引入redis的jedis客户端，以及与langchain4j的整合组件 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
+            <version>1.19.0-beta29</version>
+        </dependency>
+
         <!-- 流式输出引入依赖 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-reactor</artifactId>
             <version>1.1.0-beta7</version>
         </dependency>
+
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
