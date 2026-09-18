@@ -30,6 +30,12 @@
         <java.version>21</java.version>
     </properties>
     <dependencies>
+        <!-- Spring Session + Redis -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
         <!-- 引入本地缓存，用来缓存不同应用（appId）创建的AI service实例，避免重复创建 -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
