@@ -30,10 +30,16 @@
         <java.version>21</java.version>
     </properties>
     <dependencies>
-        <!-- Spring Session + Redis -->
+        <!-- 1. 提供与 Redis 建立连接的基础能力 -->
         <dependency>
-            <groupId>org.springframework.session</groupId>
-            <artifactId>spring-session-data-redis</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- 2. 提供将 Session 交给 Redis 管理的核心机制 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-session-data-redis</artifactId>
         </dependency>
 
         <!-- 引入本地缓存，用来缓存不同应用（appId）创建的AI service实例，避免重复创建 -->

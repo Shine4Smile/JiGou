@@ -6,7 +6,7 @@ spring:
       - dev
   # session 配置
   session:
-    store-type: redis
+    #    store-type: redis spring boot3.x之后移除了该配置
     # session 30 天过期
     timeout: 2592000
 
