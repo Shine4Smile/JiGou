@@ -8,6 +8,7 @@ declare namespace API {
 
   type AppDeployRequest = {
     appId?: number
+    version?: number
   }
 
   type AppEditRequest = {
@@ -76,6 +77,7 @@ declare namespace API {
     codeGenType?: string
     deployKey?: string
     deployedTime?: string
+    deployedVersion?: number
     version?: number
     visibility?: string
     priority?: number

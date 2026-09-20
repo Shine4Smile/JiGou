@@ -1,6 +1,6 @@
 <template>
   <div id="appChatPage">
-    <!-- 顶部栏：左侧应用名称（下拉可管理应用）、右侧部署按钮 -->
+    <!-- 顶部栏：左侧应用名称（下拉可管理应用）+ 状态标签，右侧版本 / 部署 / 取消部署 -->
     <div class="chat-header">
       <div class="chat-header__left">
         <img class="chat-header__logo" :src="siteConfig.logo" alt="logo" />
@@ -55,7 +55,10 @@
           </a-tag>
         </a-popconfirm>
         <a-tag v-if="app.version" color="geekblue">v{{ app.version }}</a-tag>
-        <a-tag v-if="hasDeployed" color="green">已部署</a-tag>
+        <!-- 已部署：同时展示线上内容的来源（指定版本 / 工作区最新代码） -->
+        <a-tooltip v-if="hasDeployed" :title="deployedTip">
+          <a-tag color="green">已部署（{{ deployedSourceLabel }}）</a-tag>
+        </a-tooltip>
       </div>
 
       <div class="chat-header__right">
@@ -64,8 +67,24 @@
           <template #icon><BranchesOutlined /></template>
           <span>版本</span>
         </a-button>
+        <!-- 取消部署：仅创建者、且当前处于已部署状态时展示，删除线上内容 -->
+        <a-button
+          v-if="isOwner && hasDeployed"
+          danger
+          :loading="undeploying"
+          @click="confirmUndeploy"
+        >
+          <template #icon><CloudSyncOutlined /></template>
+          <span>取消部署</span>
+        </a-button>
+        <!-- 部署：先在选择弹窗中确定部署来源（工作区最新代码 / 指定历史版本） -->
         <a-tooltip :title="isOwner ? '' : '仅应用创建者可以部署该应用'">
-          <a-button type="primary" :disabled="!isOwner" :loading="deploying" @click="doDeploy">
+          <a-button
+            type="primary"
+            :disabled="!isOwner"
+            :loading="deploying"
+            @click="openDeployModal"
+          >
             <template #icon><CloudUploadOutlined /></template>
             <span>部署</span>
           </a-button>
@@ -174,12 +193,70 @@
       v-model:open="versionDrawerOpen"
       :app-id="appId"
       :can-commit="isOwner"
+      :deployed-version="app.deployedVersion"
       @rolled-back="onRolledBack"
       @committed="onVersionCommitted"
     />
 
     <!-- 应用详情弹窗 -->
     <AppDetailModal v-model:open="detailOpen" :app="app" />
+
+    <!-- 部署弹窗：选择部署来源（工作区最新代码 / 指定历史版本） -->
+    <a-modal
+      v-model:open="deploySettingOpen"
+      title="部署应用"
+      :width="540"
+      :confirm-loading="deploying"
+      :ok-button-props="{ disabled: deployOkDisabled }"
+      ok-text="确认部署"
+      cancel-text="取消"
+      centered
+      @ok="doDeploy"
+    >
+      <a-form class="deploy-form" layout="vertical">
+        <a-form-item label="部署来源">
+          <a-radio-group v-model:value="deployForm.source" class="deploy-source">
+            <div class="deploy-source__item">
+              <a-radio value="workspace">工作区最新代码</a-radio>
+              <div class="deploy-source__tip">
+                部署当前工作区的代码，包含尚未提交为版本的修改
+              </div>
+            </div>
+            <div class="deploy-source__item">
+              <a-radio value="version" :disabled="!deployVersionOptions.length">
+                指定历史版本
+              </a-radio>
+              <div class="deploy-source__tip">
+                部署已提交的版本快照，不包含尚未提交的修改
+              </div>
+            </div>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-form-item v-if="deployForm.source === 'version'" label="选择版本">
+          <a-select
+            v-model:value="deployForm.version"
+            class="deploy-version"
+            placeholder="请选择要部署的版本"
+            :loading="deployVersionLoading"
+            :not-found-content="deployVersionLoading ? undefined : '还没有提交过版本'"
+          >
+            <a-select-option v-for="item in deployVersionOptions" :key="item.value" :value="item.value">
+              <span class="deploy-version__name">v{{ item.value }}</span>
+              <span class="deploy-version__time">{{ item.time }}</span>
+              <a-tag v-if="item.online" color="green" class="deploy-version__tag">线上</a-tag>
+              <a-tag v-else-if="item.current" color="blue" class="deploy-version__tag">当前</a-tag>
+            </a-select-option>
+          </a-select>
+          <template #extra>
+            版本快照最多保留最近 {{ MAX_VERSION_COUNT }} 个，已被淘汰的版本无法部署
+          </template>
+        </a-form-item>
+      </a-form>
+
+      <!-- 已部署过时，明确提示线上内容会被替换成什么 -->
+      <a-alert v-if="hasDeployed" type="warning" show-icon :message="redeployWarning" />
+    </a-modal>
 
     <!-- 部署成功弹窗 -->
     <a-modal
@@ -197,21 +274,28 @@
           <span>复制</span>
         </a-button>
       </div>
+      <div class="deploy-result">
+        <span class="deploy-result__label">本次部署来源：</span>
+        <a-tag :color="deployResultVersion > 0 ? 'geekblue' : 'blue'">
+          {{ deployResultLabel }}
+        </a-tag>
+      </div>
       <p class="deploy-tip deploy-tip--sub">
-        部署地址由后端返回（依赖 nginx 映射），重新部署会覆盖原有内容。
+        {{ deployResultTip }}部署地址由后端返回（依赖 nginx 映射），重新部署会覆盖原有内容。
       </p>
     </a-modal>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import type { MenuProps } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
   BranchesOutlined,
+  CloudSyncOutlined,
   CloudUploadOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -224,7 +308,8 @@ import {
   ReloadOutlined,
   SwapOutlined,
 } from '@ant-design/icons-vue'
-import { deleteApp, deployApp, getAppVoById } from '@/api/appController.ts'
+import { deleteApp, deployApp, getAppVoById, undeployApp } from '@/api/appController.ts'
+import { listVersions } from '@/api/appVersionController.ts'
 import { listAppChatHistory } from '@/api/chatHistoryController.ts'
 import AppChatMessage from '@/components/AppChatMessage.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
@@ -237,6 +322,7 @@ import {
   APP_VISIBILITY_TAG_COLOR,
   CODE_GEN_TYPE_LABEL,
   CODE_GEN_TYPE_TAG_COLOR,
+  MAX_VERSION_COUNT,
   VISIBILITY_SWITCH_TIP,
   getToggledVisibility,
   getVisibilityTip,
@@ -247,6 +333,7 @@ import {
   GENERATED_HISTORY_SIZE,
 } from '@/constants/chatHistory'
 import { asApiId } from '@/utils/apiId'
+import { formatDateTime } from '@/utils/time'
 import { switchAppVisibility } from '@/utils/appVisibility'
 import { getPreviewUrl, isPreviewAvailable } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
@@ -263,6 +350,9 @@ type ChatMessage = {
   /** 消息时间 */
   time?: string
 }
+
+/** 部署来源：工作区最新代码 / 指定历史版本 */
+type DeploySource = 'workspace' | 'version'
 
 const route = useRoute()
 const router = useRouter()
@@ -284,6 +374,18 @@ const previewVisible = ref(false)
 const previewKey = ref(0)
 const deployUrl = ref('')
 const deployModalOpen = ref(false)
+/** 部署弹窗是否打开（选择部署来源：工作区最新代码 / 指定历史版本） */
+const deploySettingOpen = ref(false)
+/** 取消部署请求进行中 */
+const undeploying = ref(false)
+/** 部署来源表单（version 仅在 source 为 version 时有意义） */
+const deployForm = reactive<{ source: DeploySource; version?: number }>({ source: 'workspace' })
+/** 部署弹窗中的版本列表加载中 */
+const deployVersionLoading = ref(false)
+/** 部署弹窗中的版本列表（后端按版本号降序返回） */
+const deployVersionList = ref<API.AppVersionVO[]>([])
+/** 本次部署成功的来源版本号：0 表示部署的是工作区代码 */
+const deployResultVersion = ref(0)
 const detailOpen = ref(false)
 /** 版本管理抽屉是否打开 */
 const versionDrawerOpen = ref(false)
@@ -306,6 +408,59 @@ const isAdmin = computed(() => loginUserStore.loginUser.userRole === ACCESS_ENUM
 /** 是否展示「编辑应用信息」入口：创建者本人或管理员 */
 const canManage = computed(() => isOwner.value || isAdmin.value)
 const hasDeployed = computed(() => !!app.value.deployKey)
+
+/** 线上内容来源文案：部署到指定版本时展示版本号，部署工作区代码时提示跟随工作区 */
+const deployedSourceLabel = computed(() =>
+  app.value.deployedVersion ? `线上 v${app.value.deployedVersion}` : '跟随工作区',
+)
+
+/** 部署状态标签的悬浮说明：部署时间 + 工作区修改是否会同步到线上 */
+const deployedTip = computed(() => {
+  const time = formatDateTime(app.value.deployedTime)
+  return app.value.deployedVersion
+    ? `线上内容来自历史版本 v${app.value.deployedVersion}，部署于 ${time}；工作区的修改不会影响线上内容，除非重新部署`
+    : `线上内容来自某次部署时的工作区代码，部署于 ${time}；工作区的修改需要重新部署才会生效`
+})
+
+/** 部署弹窗的可选版本（按版本号降序，标记当前版本与线上正在部署的版本） */
+const deployVersionOptions = computed(() =>
+  deployVersionList.value
+    .filter((item) => (item.version ?? 0) > 0)
+    .map((item) => ({
+      value: item.version as number,
+      time: formatDateTime(item.commitTime),
+      current: item.current ?? false,
+      online: item.version === app.value.deployedVersion,
+    })),
+)
+
+/** 选择「指定历史版本」但还没有选中版本时，禁用弹窗的确认部署按钮 */
+const deployOkDisabled = computed(() => deployForm.source === 'version' && !deployForm.version)
+
+/** 重新部署提示：明确线上内容会被替换成哪个来源 */
+const redeployWarning = computed(() => {
+  const currentOnline = app.value.deployedVersion
+    ? `v${app.value.deployedVersion}`
+    : '工作区最新代码'
+  if (deployForm.source === 'version' && deployForm.version) {
+    return deployForm.version === app.value.deployedVersion
+      ? `线上当前就是 v${deployForm.version}，重新部署会用该版本的代码覆盖线上内容`
+      : `线上当前部署的是 ${currentOnline}，确认后将切换为 v${deployForm.version}（覆盖原有内容）`
+  }
+  return `线上当前部署的是 ${currentOnline}，确认后将切换为工作区最新代码（覆盖原有内容）`
+})
+
+/** 部署成功弹窗的来源文案 */
+const deployResultLabel = computed(() =>
+  deployResultVersion.value > 0 ? `历史版本 v${deployResultVersion.value}` : '工作区最新代码',
+)
+
+/** 部署成功弹窗的来源说明：工作区部署需要重新部署才会同步后续修改 */
+const deployResultTip = computed(() =>
+  deployResultVersion.value > 0
+    ? `部署的是 v${deployResultVersion.value} 的代码快照，工作区的后续修改不会影响线上内容；`
+    : '部署的是执行本次部署时的工作区代码，工作区的后续修改需要重新部署才会生效；',
+)
 const previewUrl = computed(() => getPreviewUrl(app.value.codeGenType, appId))
 /** 追加时间戳参数，避免浏览器复用缓存的旧页面 */
 const previewSrc = computed(() => `${previewUrl.value}?t=${previewKey.value}`)
@@ -606,7 +761,36 @@ const onPressEnter = (e: KeyboardEvent) => {
 
 /* ------------------------------ 部署 ------------------------------ */
 
-const doDeploy = async () => {
+/**
+ * 加载部署弹窗中的版本列表
+ *
+ * 只有创建者可以打开部署弹窗，因此这里不会出现无权限的情况
+ *
+ * @returns 是否加载成功（失败时保持用户选择，不做降级，避免误部署）
+ */
+const loadDeployVersions = async () => {
+  deployVersionLoading.value = true
+  try {
+    const res = await listVersions({ appId: asApiId(appId) })
+    if (res.data.code === 0 && res.data.data) {
+      deployVersionList.value = res.data.data.versionList ?? []
+      return true
+    }
+    message.error('获取版本列表失败：' + (res.data.message ?? '请稍后重试'))
+  } catch {
+    message.error('获取版本列表失败，请检查网络后重试')
+  } finally {
+    deployVersionLoading.value = false
+  }
+  return false
+}
+
+/**
+ * 打开部署弹窗
+ *
+ * 默认沿用当前线上来源：线上是某个历史版本时继续选中该版本，否则默认部署工作区最新代码
+ */
+const openDeployModal = async () => {
   if (!isOwner.value) {
     message.warning('仅应用创建者可以部署该应用')
     return
@@ -615,12 +799,44 @@ const doDeploy = async () => {
     message.warning('请等待代码生成完成后再部署')
     return
   }
+  const deployedVersion = app.value.deployedVersion ?? 0
+  deployForm.source = deployedVersion > 0 ? 'version' : 'workspace'
+  deployForm.version = deployedVersion > 0 ? deployedVersion : undefined
+  deploySettingOpen.value = true
+  const loaded = await loadDeployVersions()
+  // 线上版本可能已被淘汰清理：此时降级为最新版本，一个版本都没有则回到工作区；
+  // 版本列表加载失败时保持原选择，避免静默改成「部署工作区代码」误覆盖线上
+  if (
+    loaded &&
+    deployForm.source === 'version' &&
+    !deployVersionOptions.value.some((item) => item.value === deployForm.version)
+  ) {
+    deployForm.version = deployVersionOptions.value[0]?.value
+    if (!deployForm.version) {
+      deployForm.source = 'workspace'
+    }
+  }
+}
+
+/**
+ * 执行部署（部署来源取自部署弹窗）
+ *
+ * version 为空表示部署工作区最新代码，否则部署指定历史版本的代码快照
+ */
+const doDeploy = async () => {
+  const version = deployForm.source === 'version' ? deployForm.version : undefined
+  if (deployForm.source === 'version' && !version) {
+    message.warning('请选择要部署的版本')
+    return
+  }
   deploying.value = true
   try {
-    const res = await deployApp({ appId: asApiId(appId) })
+    const res = await deployApp({ appId: asApiId(appId), version })
     if (res.data.code === 0 && res.data.data) {
       deployUrl.value = res.data.data
+      deployResultVersion.value = version ?? 0
       deployModalOpen.value = true
+      deploySettingOpen.value = false
       await loadApp(true)
     } else {
       message.error('部署失败：' + (res.data.message ?? '请稍后重试'))
@@ -630,6 +846,40 @@ const doDeploy = async () => {
   } finally {
     deploying.value = false
   }
+}
+
+/**
+ * 取消部署（二次确认后删除线上部署产物）
+ *
+ * 取消部署只影响线上内容：工作区代码与历史版本都会保留，可随时重新部署
+ */
+const confirmUndeploy = () => {
+  if (!isOwner.value || !hasDeployed.value) {
+    return
+  }
+  Modal.confirm({
+    title: '确定取消部署吗？',
+    content: `取消后部署标识「${app.value.deployKey}」对应的线上地址将立即无法访问，工作区代码与历史版本都会保留，可随时重新部署。`,
+    okText: '取消部署',
+    okType: 'danger',
+    cancelText: '再想想',
+    onOk: async () => {
+      undeploying.value = true
+      try {
+        const res = await undeployApp({ appId: asApiId(appId) })
+        if (res.data.code === 0) {
+          message.success('已取消部署，线上地址已失效')
+          await loadApp(true)
+          return
+        }
+        message.error('取消部署失败：' + (res.data.message ?? '请稍后重试'))
+      } catch {
+        message.error('取消部署失败，请检查网络后重试')
+      } finally {
+        undeploying.value = false
+      }
+    },
+  })
 }
 
 /** 复制部署地址（非安全上下文下 clipboard 不可用，降级为临时输入框复制） */
@@ -952,6 +1202,55 @@ onBeforeUnmount(() => {
 
 .deploy-url__link {
   word-break: break-all;
+}
+
+/* 部署弹窗：部署来源单选与版本选择 */
+.deploy-source {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deploy-source__item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 单选下方的说明文案，与单选文字左对齐 */
+.deploy-source__tip {
+  margin-left: 24px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.deploy-form :deep(.ant-form-item:last-of-type) {
+  margin-bottom: 0;
+}
+
+.deploy-version {
+  width: 100%;
+}
+
+.deploy-version__time {
+  margin-left: 8px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.deploy-version__tag {
+  margin-inline-start: 8px;
+  margin-inline-end: 0;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* 部署成功弹窗：本次部署来源 */
+.deploy-result {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  color: rgba(0, 0, 0, 0.65);
 }
 
 /* 窄屏下改为上下堆叠，避免左右区域过窄 */

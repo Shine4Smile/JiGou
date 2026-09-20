@@ -39,6 +39,7 @@
           </a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="部署标识">{{ app.deployKey || '未部署' }}</a-descriptions-item>
+        <a-descriptions-item label="部署版本">{{ deployedVersionLabel }}</a-descriptions-item>
         <a-descriptions-item label="部署时间">{{
           formatDateTime(app.deployedTime)
         }}</a-descriptions-item>
@@ -67,6 +68,7 @@
 </template>
 
 <script lang="ts" setup>
+import { computed } from 'vue'
 import { UserOutlined } from '@ant-design/icons-vue'
 import {
   APP_VISIBILITY_LABEL,
@@ -78,7 +80,7 @@ import {
 } from '@/constants/app'
 import { formatDateTime } from '@/utils/time'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** 弹窗显隐（配合 v-model:open 使用） */
     open: boolean
@@ -96,6 +98,14 @@ withDefaults(
 const emit = defineEmits<{
   (e: 'update:open', open: boolean): void
 }>()
+
+/** 部署版本展示：未部署 / 工作区最新代码 / vN（对应后端 deployedVersion） */
+const deployedVersionLabel = computed(() => {
+  if (!props.app?.deployKey) {
+    return '未部署'
+  }
+  return props.app.deployedVersion ? `v${props.app.deployedVersion}` : '工作区最新代码'
+})
 </script>
 
 <style scoped>

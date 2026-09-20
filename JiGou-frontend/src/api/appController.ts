@@ -178,3 +178,15 @@ export async function listPublicAppVoByPage(
     ...(options || {}),
   })
 }
+
+/** 此处后端没有提供注释 POST /app/undeploy */
+export async function undeployApp(body: API.AppDeployRequest, options?: { [key: string]: any }) {
+  return request<API.BaseResponseBoolean>('/app/undeploy', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}

@@ -29,6 +29,10 @@
             <div class="version-item__header">
               <span class="version-item__name">v{{ item.version }}</span>
               <a-tag v-if="item.current" color="green" class="version-item__tag">当前版本</a-tag>
+              <!-- 线上正在部署的版本：与部署状态标签呼应，避免误删正在使用的版本 -->
+              <a-tag v-if="item.version === deployedVersion" color="blue" class="version-item__tag">
+                线上部署
+              </a-tag>
             </div>
             <div class="version-item__time">
               <span>{{ formatDateTime(item.commitTime) }}</span>
@@ -65,8 +69,8 @@
     </a-spin>
 
     <div class="version-footer">
-      版本快照保存在服务端，最多保留最近 {{ MAX_VERSION_COUNT }} 个版本，超出后自动淘汰最旧的版本。
-      回退只会覆盖工作区代码，历史版本不会被删除。
+      版本快照保存在服务端，最多保留最近 {{ MAX_VERSION_COUNT }} 个版本，超出后自动淘汰最旧的版本；
+      当前版本与线上正在部署的版本不会被淘汰。回退只会覆盖工作区代码，历史版本不会被删除。
     </div>
 
     <!-- 查看某个版本的完整代码 -->
@@ -102,9 +106,12 @@ const props = withDefaults(
     appId: string | number
     /** 是否为应用创建者：提交与回退仅创建者可用（与后端校验保持一致） */
     canCommit?: boolean
+    /** 线上正在部署的版本号（为空表示线上部署的是工作区最新代码） */
+    deployedVersion?: number
   }>(),
   {
     canCommit: false,
+    deployedVersion: 0,
   },
 )
 
