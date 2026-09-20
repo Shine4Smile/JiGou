@@ -151,10 +151,20 @@
                   <span>精选</span>
                 </a-button>
               </a-popconfirm>
-              <a-button v-else type="link" size="small" disabled>
-                <template #icon><StarFilled /></template>
-                <span>已精选</span>
-              </a-button>
+              <a-popconfirm
+                v-else
+                :title="`确定取消应用「${record.appName || record.id}」的精选吗？`"
+                description="取消后（优先级 0）将不再展示在首页「精选案例」中"
+                ok-text="取消精选"
+                cancel-text="返回"
+                placement="topRight"
+                @confirm="doCancelFeatured(record)"
+              >
+                <a-button type="link" size="small" :loading="featuringId === record.id">
+                  <template #icon><StarFilled /></template>
+                  <span>取消精选</span>
+                </a-button>
+              </a-popconfirm>
               <a-popconfirm
                 :title="`确定删除应用「${record.appName || record.id}」吗？`"
                 description="删除后不可恢复，请谨慎操作"
@@ -353,26 +363,39 @@ const goEdit = (record: API.AppVO) => {
 const featuringId = ref<number>()
 const deletingId = ref<number>()
 
-// 精选：本质是把优先级更新为 99（只传需要修改的字段，后端按非空字段更新）
-const doSetFeatured = async (record: API.AppVO) => {
+// 精选 / 取消精选：本质是把优先级更新为 99 / 0（只传需要修改的字段，后端按非空字段更新）
+const updateFeatured = async (record: API.AppVO, priority: number) => {
   if (!record?.id) {
     return
   }
+  const featured = priority === GOOD_APP_PRIORITY
+  const failTip = featured ? '设置失败' : '取消失败'
   featuringId.value = record.id
   try {
-    const res = await updateAppByAdmin({ id: record.id, priority: GOOD_APP_PRIORITY })
+    const res = await updateAppByAdmin({ id: record.id, priority })
     if (res.data.code === 0) {
-      message.success('已设为精选应用')
+      message.success(featured ? '已设为精选应用' : '已取消精选')
+      // 在「精选」筛选条件下取消精选会让该行从列表中消失，当前页仅此一条时自动回退一页
+      const filteredByFeatured = searchParams.priority === GOOD_APP_PRIORITY
+      if (!featured && filteredByFeatured && data.value.length === 1 && (searchParams.pageNum ?? 1) > 1) {
+        searchParams.pageNum = (searchParams.pageNum ?? 1) - 1
+      }
       await fetchData()
     } else {
-      message.error('设置失败，' + (res.data.message ?? '请稍后重试'))
+      message.error(failTip + '，' + (res.data.message ?? '请稍后重试'))
     }
   } catch {
-    message.error('设置失败，请稍后重试')
+    message.error(failTip + '，请稍后重试')
   } finally {
     featuringId.value = undefined
   }
 }
+
+// 设为精选
+const doSetFeatured = (record: API.AppVO) => updateFeatured(record, GOOD_APP_PRIORITY)
+
+// 取消精选
+const doCancelFeatured = (record: API.AppVO) => updateFeatured(record, DEFAULT_APP_PRIORITY)
 
 const doDelete = async (record: API.AppVO) => {
   if (!record?.id) {
