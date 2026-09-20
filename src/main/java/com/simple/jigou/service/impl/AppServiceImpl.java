@@ -8,6 +8,7 @@ import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
 import com.simple.jigou.core.AppStorageManager;
@@ -32,6 +33,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -60,6 +63,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    @Resource
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     /**
      * 创建应用
@@ -332,10 +338,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     /**
-     * 删除应用，并关联删除该应用下的所有对话历史
+     * 删除应用，并关联删除该应用下的所有对话历史与代码数据
      *
      * <p>加事务保证「删除对话历史」与「删除应用」两步要么都成功、要么都回滚，
      * 避免应用删除失败时对话历史已被删除，导致数据不一致
+     *
+     * <p>数据库之外的数据（工作区代码、历史版本快照、部署产物、redis 会话记忆、AI 服务实例缓存）
+     * 统一在事务提交后清理：事务回滚时不会误删文件，应用删除后也不会残留无人可查的数据
      *
      * @param appId 应用 id
      * @return 是否删除成功
@@ -345,12 +354,78 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     public boolean deleteApp(Long appId) {
         // 1. 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
-        // 2. 关联删除该应用下的所有对话历史（该应用没有对话历史时返回 false 属正常情况，因此不校验返回值）
+        // 2. 查询应用信息：记录删除后读不到代码生成类型与部署标识，先取出用于后续清理数据库之外的数据
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 关联删除该应用下的所有对话历史（该应用没有对话历史时返回 false 属正常情况，因此不校验返回值）
         chatHistoryService.remove(QueryWrapper.create().eq("appId", appId));
-        // 3. 删除应用本身（失败则抛出异常，由事务回滚上面的对话历史删除）
+        // 4. 逻辑删除应用本身（失败则抛出异常，由事务回滚上面的对话历史删除）
         boolean result = this.removeById(appId);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除应用失败");
+        // 5. 事务提交后再清理代码文件、部署产物与 AI 会话缓存
+        cleanupAppResourcesAfterCommit(app);
         return true;
+    }
+
+    /**
+     * 注册应用资源清理任务（事务提交后执行）
+     *
+     * <p>没有活跃的事务同步时（如单元测试中直接调用）立即清理，保证清理逻辑不会漏执行
+     *
+     * @param app 被删除的应用（携带代码生成类型与部署标识）
+     */
+    private void cleanupAppResourcesAfterCommit(App app) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            cleanupAppResources(app);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                cleanupAppResources(app);
+            }
+        });
+    }
+
+    /**
+     * 清理应用在数据库之外的全部数据
+     *
+     * <p>包含三部分：工作区代码与历史版本快照、部署产物、redis 会话记忆与缓存的 AI 服务实例
+     *
+     * <p>每部分单独兜底并记录日志：此时数据库事务已提交，清理失败不能影响删除结果，
+     * 否则会出现「应用已删除但接口报错」的误导（残留数据可由运维按日志手动清理）
+     *
+     * @param app 被删除的应用
+     */
+    private void cleanupAppResources(App app) {
+        Long appId = app.getId();
+        String codeGenType = app.getCodeGenType();
+        // 1. 工作区代码（AI 最新生成的代码）与版本库（历史版本快照）
+        if (StrUtil.isNotBlank(codeGenType)) {
+            try {
+                AppStorageManager.deleteWorkDir(codeGenType, appId);
+                AppStorageManager.deleteVersionRootDir(codeGenType, appId);
+            } catch (Exception e) {
+                log.error("清理应用代码文件失败，appId = {}，代码生成类型 = {}", appId, codeGenType, e);
+            }
+        }
+        // 2. 部署产物：已部署的应用随应用一起下线，避免线上地址继续可访问
+        String deployKey = app.getDeployKey();
+        if (StrUtil.isNotBlank(deployKey)) {
+            try {
+                FileUtil.del(FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey));
+            } catch (Exception e) {
+                log.error("清理应用部署产物失败，appId = {}，部署标识 = {}", appId, deployKey, e);
+            }
+        }
+        // 3. redis 中的会话记忆与缓存的 AI 服务实例：避免已删除应用的上下文继续被使用
+        try {
+            aiCodeGeneratorServiceFactory.deleteChatMemory(appId);
+            aiCodeGeneratorServiceFactory.invalidate(appId);
+        } catch (Exception e) {
+            log.error("清理应用会话缓存失败，appId = {}", appId, e);
+        }
+        log.info("应用数据清理完成，appId = {}，代码生成类型 = {}，部署标识 = {}", appId, codeGenType, deployKey);
     }
 
     /**

@@ -128,6 +128,33 @@ class AppStorageManagerTest {
         assertNoResidue();
     }
 
+    @Test
+    void deleteAppCodeShouldRemoveWorkDirAndVersionLib() {
+        // 1. 构造工作区代码并提交两个版本，模拟真实应用的数据目录
+        writeWorkFile("index.html", "<h1>v1</h1>");
+        AppStorageManager.commitVersion(CODE_GEN_TYPE, TEST_APP_ID);
+        writeWorkFile("index.html", "<h1>v2</h1>");
+        AppStorageManager.commitVersion(CODE_GEN_TYPE, TEST_APP_ID);
+        Assertions.assertEquals(Arrays.asList(2, 1), AppStorageManager.listVersions(CODE_GEN_TYPE, TEST_APP_ID));
+        // 2. 造出生成流程异常中断时可能残留的临时目录与备份目录
+        FileUtil.mkdir(AppStorageManager.getTempDir(CODE_GEN_TYPE, TEST_APP_ID));
+        FileUtil.mkdir(backupDir());
+
+        // 3. 删除应用代码：工作区与残留目录一并清理
+        Assertions.assertTrue(AppStorageManager.deleteWorkDir(CODE_GEN_TYPE, TEST_APP_ID));
+        Assertions.assertFalse(AppStorageManager.getWorkDir(CODE_GEN_TYPE, TEST_APP_ID).exists());
+        Assertions.assertFalse(AppStorageManager.getTempDir(CODE_GEN_TYPE, TEST_APP_ID).exists());
+        Assertions.assertFalse(backupDir().exists());
+
+        // 4. 删除版本库目录：该应用的全部历史版本快照一并清理
+        Assertions.assertTrue(AppStorageManager.deleteVersionRootDir(CODE_GEN_TYPE, TEST_APP_ID));
+        Assertions.assertFalse(AppStorageManager.getVersionRootDir(CODE_GEN_TYPE, TEST_APP_ID).exists());
+
+        // 5. 目录不存在时再次删除仍返回成功（应用可能从未生成过代码）
+        Assertions.assertTrue(AppStorageManager.deleteWorkDir(CODE_GEN_TYPE, TEST_APP_ID));
+        Assertions.assertTrue(AppStorageManager.deleteVersionRootDir(CODE_GEN_TYPE, TEST_APP_ID));
+    }
+
     /**
      * 写出工作区文件
      */

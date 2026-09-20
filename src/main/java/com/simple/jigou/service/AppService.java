@@ -93,7 +93,10 @@ public interface AppService extends IService<App> {
     void checkAppViewPermission(App app, User loginUser);
 
     /**
-     * 删除应用，并关联删除该应用下的所有对话历史（避免产生冗余数据）
+     * 删除应用，并清理该应用的全部关联数据
+     *
+     * <p>数据库内：关联删除对话历史并逻辑删除应用，两步由事务保证一致性
+     * <p>数据库外：事务提交后清理工作区代码、历史版本快照、部署产物、redis 会话记忆与 AI 服务实例缓存
      *
      * @param appId 应用 id
      * @return 是否删除成功

@@ -279,6 +279,38 @@ public class AppStorageManager {
      * @param version     版本号
      * @return 是否删除成功
      */
+    /**
+     * 删除应用的工作区目录及生成过程中的残留目录（临时目录 / 备份目录）
+     * <p>
+     * 应用被删除时调用：工作区存放的是 AI 最新生成的代码文件，删除后应用不再占用磁盘空间
+     *
+     * @param codeGenType 代码生成类型
+     * @param appId       应用 id
+     * @return 是否删除成功
+     */
+    public static boolean deleteWorkDir(String codeGenType, Long appId) {
+        File workDir = getWorkDir(codeGenType, appId);
+        File parentDir = workDir.getParentFile();
+        // 临时目录与备份目录由「写入代码」「替换工作区」流程产生，正常流程结束时会自动清理，
+        // 这里兜底清理，避免流程异常中断时残留的目录随应用一起变成垃圾数据
+        return FileUtil.del(workDir)
+                & FileUtil.del(FileUtil.file(parentDir, TEMP_DIR_PREFIX + workDir.getName()))
+                & FileUtil.del(FileUtil.file(parentDir, BACKUP_DIR_PREFIX + workDir.getName()));
+    }
+
+    /**
+     * 删除应用的版本库目录（该应用的全部历史版本快照一并清理）
+     * <p>
+     * 应用被删除时调用：历史版本只对仍然存在的应用有意义，保留会变成无人可查的垃圾数据
+     *
+     * @param codeGenType 代码生成类型
+     * @param appId       应用 id
+     * @return 是否删除成功
+     */
+    public static boolean deleteVersionRootDir(String codeGenType, Long appId) {
+        return FileUtil.del(getVersionRootDir(codeGenType, appId));
+    }
+
     public static boolean deleteVersion(String codeGenType, Long appId, Integer version) {
         return FileUtil.del(getVersionDir(codeGenType, appId, version));
     }

@@ -79,6 +79,30 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
+     * 失效指定应用的 AI 服务实例缓存
+     * <p>
+     * 应用被删除后调用：缓存中的实例持有该应用的会话记忆，继续保留既占用内存，语义上也已无归属
+     *
+     * @param appId 应用 id
+     */
+    public void invalidate(long appId) {
+        serviceCache.invalidate(appId);
+        log.info("已失效应用 AI 服务实例缓存，appId: {}", appId);
+    }
+
+    /**
+     * 删除指定应用在 redis 中的会话记忆
+     * <p>
+     * 应用被删除后调用：对话历史已随应用一起删除，redis 中缓存的上下文也必须清理
+     *
+     * @param appId 应用 id
+     */
+    public void deleteChatMemory(long appId) {
+        redisChatMemoryStore.deleteMessages(appId);
+        log.info("已删除应用会话记忆，appId: {}", appId);
+    }
+
+    /**
      * 方案一：内置机制隔离。给AI服务方法增加@MemoryId int memoryId注解和参数，通过chatMemoryProvider为每个appId分配会话记忆
      * 方案二：AI service隔离。根据appId获取服务，给每个应用分配一个专属的AI service，每个AI service绑定独立的会话记忆
      * 这里采用方案二
