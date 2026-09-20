@@ -37,6 +37,34 @@ declare namespace API {
     priority?: number
   }
 
+  type AppVersionCommitRequest = {
+    appId?: number
+  }
+
+  type AppVersionDetailVO = {
+    version?: number
+    commitTime?: string
+    fileMap?: Record<string, any>
+  }
+
+  type AppVersionListVO = {
+    currentVersion?: number
+    hasCode?: boolean
+    uncommitted?: boolean
+    versionList?: AppVersionVO[]
+  }
+
+  type AppVersionRollbackRequest = {
+    appId?: number
+    version?: number
+  }
+
+  type AppVersionVO = {
+    version?: number
+    commitTime?: string
+    current?: boolean
+  }
+
   type AppVO = {
     id?: number
     appName?: string
@@ -45,11 +73,24 @@ declare namespace API {
     codeGenType?: string
     deployKey?: string
     deployedTime?: string
+    version?: number
     priority?: number
     userId?: number
     createTime?: string
     updateTime?: string
     userVO?: UserVO
+  }
+
+  type BaseResponseAppVersionDetailVO = {
+    code?: number
+    data?: AppVersionDetailVO
+    message?: string
+  }
+
+  type BaseResponseAppVersionListVO = {
+    code?: number
+    data?: AppVersionListVO
+    message?: string
   }
 
   type BaseResponseAppVO = {
@@ -67,6 +108,12 @@ declare namespace API {
   type BaseResponseChatHistoryPageVO = {
     code?: number
     data?: ChatHistoryPageVO
+    message?: string
+  }
+
+  type BaseResponseInteger = {
+    code?: number
+    data?: number
     message?: string
   }
 
@@ -176,6 +223,15 @@ declare namespace API {
 
   type getUserVOByIdParams = {
     id: number
+  }
+
+  type getVersionDetailParams = {
+    appId: number
+    version: number
+  }
+
+  type listVersionsParams = {
+    appId: number
   }
 
   type LoginUserVO = {

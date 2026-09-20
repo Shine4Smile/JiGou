@@ -36,10 +36,16 @@
         >
           {{ CODE_GEN_TYPE_LABEL[app.codeGenType] ?? app.codeGenType }}
         </a-tag>
+        <a-tag v-if="app.version" color="geekblue">v{{ app.version }}</a-tag>
         <a-tag v-if="hasDeployed" color="green">已部署</a-tag>
       </div>
 
       <div class="chat-header__right">
+        <!-- 版本管理入口：提交版本、查看历史、版本对比与回退（仅创建者 / 管理员可见） -->
+        <a-button v-if="canManage" @click="versionDrawerOpen = true">
+          <template #icon><BranchesOutlined /></template>
+          <span>版本</span>
+        </a-button>
         <a-tooltip :title="isOwner ? '' : '仅应用创建者可以部署该应用'">
           <a-button type="primary" :disabled="!isOwner" :loading="deploying" @click="doDeploy">
             <template #icon><CloudUploadOutlined /></template>
@@ -145,6 +151,15 @@
       </div>
     </div>
 
+    <!-- 版本管理抽屉：提交版本、查看历史版本、版本对比与回退 -->
+    <AppVersionDrawer
+      v-model:open="versionDrawerOpen"
+      :app-id="appId"
+      :can-commit="isOwner"
+      @rolled-back="onRolledBack"
+      @committed="onVersionCommitted"
+    />
+
     <!-- 应用详情弹窗 -->
     <AppDetailModal v-model:open="detailOpen" :app="app" />
 
@@ -178,6 +193,7 @@ import { Modal, message } from 'ant-design-vue'
 import type { MenuProps } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
+  BranchesOutlined,
   CloudUploadOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -193,6 +209,7 @@ import { deleteApp, deployApp, getAppVoById } from '@/api/appController.ts'
 import { listAppChatHistory } from '@/api/chatHistoryController.ts'
 import AppChatMessage from '@/components/AppChatMessage.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
+import AppVersionDrawer from '@/components/AppVersionDrawer.vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import ACCESS_ENUM from '@/access/accessEnum'
@@ -240,6 +257,8 @@ const previewKey = ref(0)
 const deployUrl = ref('')
 const deployModalOpen = ref(false)
 const detailOpen = ref(false)
+/** 版本管理抽屉是否打开 */
+const versionDrawerOpen = ref(false)
 const messageListRef = ref<HTMLElement>()
 
 /** 流式请求的取消控制器，用于「停止生成」与组件卸载 */
@@ -572,6 +591,30 @@ const openPreviewInNewTab = () => {
   window.open(previewSrc.value, '_blank')
 }
 
+/* ------------------------------ 版本回退 ------------------------------ */
+
+/**
+ * 版本回退成功：工作区代码已被目标版本整体覆盖，刷新右侧预览并静默刷新应用信息
+ *
+ * @param version 回退到的版本号
+ */
+const onRolledBack = async (version: number) => {
+  previewVisible.value = true
+  refreshPreview()
+  await loadApp(true)
+  message.info(`预览已刷新为 v${version} 的代码效果`)
+}
+
+/**
+ * 版本提交成功：静默刷新应用信息，让顶部版本标签同步为新版本
+ *
+ * @param version 新版本号
+ */
+const onVersionCommitted = async (version: number) => {
+  await loadApp(true)
+  message.success(`已生成 v${version}，可在版本面板中对比或回退`)
+}
+
 /* ------------------------------ 应用管理 ------------------------------ */
 
 // 删除应用（二次确认后调用用户端删除接口）
@@ -672,6 +715,14 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: #f5f5f5;
   object-fit: contain;
+}
+
+/* 顶部栏右侧：版本入口 + 部署按钮 */
+.chat-header__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 .chat-header__name {

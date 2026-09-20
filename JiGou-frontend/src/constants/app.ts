@@ -13,7 +13,6 @@ export const CODE_GEN_TYPE_LABEL: Record<string, string> = {
   html: '原生 HTML',
   multi_file: '原生多文件',
 }
-
 /** 普通应用优先级（未上精选），对应后端 AppConstant.DEFAULT_APP_PRIORITY */
 export const DEFAULT_APP_PRIORITY = 0
 
@@ -31,3 +30,10 @@ export const CODE_GEN_TYPE_TAG_COLOR: Record<string, string> = {
   html: 'orange',
   multi_file: 'blue',
 }
+
+/**
+ * 单个应用最多保留的历史版本数量，对应后端 AppConstant.MAX_VERSION_COUNT
+ *
+ * 超出后后端会自动淘汰最旧的版本（当前版本受保护），前端仅用于展示提示文案
+ */
+export const MAX_VERSION_COUNT = 20
