@@ -1,9 +1,13 @@
 package com.simple.jigou.core;
 
+import cn.hutool.core.util.StrUtil;
+import com.simple.jigou.ai.AiAppNameService;
 import com.simple.jigou.ai.AiCodeGeneratorService;
 import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
+import com.simple.jigou.ai.model.AppNameResult;
 import com.simple.jigou.ai.model.HtmlCodeResult;
 import com.simple.jigou.ai.model.MultiFileCodeResult;
+import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.parser.CodeParserExecutor;
 import com.simple.jigou.core.saver.CodeFileSaverExecutor;
 import com.simple.jigou.exception.BusinessException;
@@ -26,6 +30,17 @@ public class AiCodeGeneratorFacade {
 
     @Resource
     private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
+
+    @Resource
+    private AiAppNameService aiAppNameService;
+
+    /**
+     * AI 偶尔会把名称用成对的符号包裹，此处按成对符号去掉一层
+     */
+    private static final String[][] APP_NAME_WRAPPER_SYMBOLS = {
+            {"\"", "\""}, {"'", "'"}, {"“", "”"}, {"‘", "’"},
+            {"《", "》"}, {"【", "】"}, {"「", "」"}, {"（", "）"}, {"(", ")"}, {"`", "`"}
+    };
 
     /**
      * 统一入口：根据类型生成并保存代码
@@ -82,6 +97,79 @@ public class AiCodeGeneratorFacade {
         };
     }
 
+
+    /**
+     * 根据应用初始需求生成应用名称
+     * 命名属于增强能力，失败时返回 null 由调用方兜底，绝不影响应用创建
+     *
+     * @param initPrompt 应用初始需求
+     * @return 清洗后的应用名称，失败时返回 null
+     */
+    public String generateAppName(String initPrompt) {
+        if (StrUtil.isBlank(initPrompt)) {
+            return null;
+        }
+        long startTime = System.currentTimeMillis();
+        try {
+            AppNameResult result = aiAppNameService.generateAppName(initPrompt);
+            String appName = cleanAppName(result == null ? null : result.getAppName());
+            if (StrUtil.isBlank(appName)) {
+                log.warn("AI 未生成有效的应用名称，initPrompt：{}", initPrompt);
+                return null;
+            }
+            log.info("AI 生成应用名称成功：{}，耗时 {} ms", appName, System.currentTimeMillis() - startTime);
+            return appName;
+        } catch (Exception e) {
+            log.error("AI 生成应用名称失败，将使用兜底名称", e);
+            return null;
+        }
+    }
+
+    /**
+     * 清洗AI生成的应用名称
+     * 依次处理换行与多余空白、成对包裹符号、结尾标点、结构化 JSON 残留，最后限制长度
+     *
+     * @param rawAppName AI 返回的原始名称
+     * @return 清洗后的名称，无效时返回 null
+     */
+    private String cleanAppName(String rawAppName) {
+        if (StrUtil.isBlank(rawAppName)) {
+            return null;
+        }
+        // 1. 换行、制表符与全角空格统一为空格，并压缩连续空白，避免 AI 输出的多行说明污染名称
+        String appName = rawAppName.replaceAll("[\\r\\n\\t\\u3000]+", " ")
+                .replaceAll(" {2,}", " ")
+                .trim();
+        // 2. 去掉成对包裹的引号、书名号等符号
+        appName = stripWrapperSymbols(appName);
+        // 3. 去掉结尾的语气标点，如「每日饮水打卡。」
+        appName = appName.replaceAll("[。，,.;；!！?？]+$", "").trim();
+        // 4. 模型输出格式异常时可能返回结构化 JSON 文本，这类内容直接视为无效
+        if (appName.contains("{") || appName.contains("}")) {
+            log.warn("AI 返回的应用名称格式异常：{}", appName);
+            return null;
+        }
+        // 5. 限制长度，避免超长名称影响列表展示
+        return StrUtil.sub(appName, 0, AppConstant.APP_NAME_MAX_LENGTH);
+    }
+
+    /**
+     * 去掉AI用成对符号包裹名称的情况，如 `"名称"`、`《名称》`
+     *
+     * @param appName 待处理的名称
+     * @return 去掉包裹符号后的名称
+     */
+    private String stripWrapperSymbols(String appName) {
+        for (String[] wrapperSymbol : APP_NAME_WRAPPER_SYMBOLS) {
+            String prefix = wrapperSymbol[0];
+            String suffix = wrapperSymbol[1];
+            if (appName.length() > prefix.length() + suffix.length()
+                    && appName.startsWith(prefix) && appName.endsWith(suffix)) {
+                return appName.substring(prefix.length(), appName.length() - suffix.length()).trim();
+            }
+        }
+        return appName;
+    }
 
     /**
      * 通用流式代码处理方法

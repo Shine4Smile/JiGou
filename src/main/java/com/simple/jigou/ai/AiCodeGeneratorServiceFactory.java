@@ -62,6 +62,16 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
+     * 应用命名 AI 服务（单轮调用，不关联会话记忆，与 appId 无关可复用单例）
+     */
+    @Bean
+    public AiAppNameService aiAppNameService() {
+        return AiServices.builder(AiAppNameService.class)
+                .chatModel(chatModel)
+                .build();
+    }
+
+    /**
      * 根据 appId 获取服务（带缓存）
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId) {

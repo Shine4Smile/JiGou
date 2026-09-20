@@ -16,7 +16,6 @@ import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.model.dto.app.*;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
-import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import com.simple.jigou.model.vo.AppVO;
 import com.simple.jigou.service.AppService;
 import com.simple.jigou.service.UserService;
@@ -107,28 +106,18 @@ public class AppController {
 
     /**
      * 创建应用（用户，须填写 initPrompt）
+     * 未填写应用名称时由 AI 根据 initPrompt 生成，随应用记录一起入库
      *
      * @param appAddRequest 创建应用请求参数接收类
      */
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        String initPrompt = appAddRequest.getInitPrompt();
-        // initPrompt 必填
-        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "initPrompt 不能为空");
         // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
-        // 构造入库对象
-        String appName = StrUtil.blankToDefault(appAddRequest.getAppName(), initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        String codeGenType = StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.MULTI_FILE.getValue());
-        App app = new App();
-        BeanUtil.copyProperties(appAddRequest, app);
-        app.setAppName(appName);
-        app.setCodeGenType(codeGenType);
-        app.setUserId(loginUser.getId());
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(app.getId());
+        // 创建应用（名称生成等组装逻辑下沉至 service）
+        Long appId = appService.createApp(appAddRequest, loginUser);
+        return ResultUtils.success(appId);
     }
 
     /**

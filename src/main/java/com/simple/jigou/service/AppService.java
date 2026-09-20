@@ -2,6 +2,7 @@ package com.simple.jigou.service;
 
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import com.simple.jigou.model.dto.app.AppAddRequest;
 import com.simple.jigou.model.dto.app.AppQueryRequest;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
@@ -16,6 +17,16 @@ import java.util.List;
  * @author simple
  */
 public interface AppService extends IService<App> {
+    /**
+     * 创建应用
+     * 应用名称未填写时由 AI 根据初始需求生成并随记录一起入库
+     *
+     * @param appAddRequest 创建应用请求参数
+     * @param loginUser     登录用户
+     * @return 新应用 id
+     */
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
+
     /**
      * 部署应用
      *

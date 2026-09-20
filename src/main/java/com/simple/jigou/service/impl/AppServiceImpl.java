@@ -13,6 +13,7 @@ import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.mapper.AppMapper;
+import com.simple.jigou.model.dto.app.AppAddRequest;
 import com.simple.jigou.model.dto.app.AppQueryRequest;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
@@ -55,6 +56,43 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    /**
+     * 创建应用
+     * 应用名称未填写时由 AI 根据初始需求生成，生成失败则兜底截取 initPrompt 的前 12 个字符
+     *
+     * @param appAddRequest 创建应用请求参数
+     * @param loginUser     登录用户
+     * @return 新应用 id
+     */
+    @Override
+    public Long createApp(AppAddRequest appAddRequest, User loginUser) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "initPrompt 不能为空");
+        // 2. 确定应用名称：用户已填写则尊重用户输入，未填写才调用 AI 生成，避免多余的模型调用
+        String appName = appAddRequest.getAppName();
+        if (StrUtil.isBlank(appName)) {
+            appName = aiCodeGeneratorFacade.generateAppName(initPrompt);
+        }
+        // 3. AI 生成失败时兜底截取 initPrompt 前 12 个字符，保证应用一定创建成功
+        appName = StrUtil.blankToDefault(appName, StrUtil.sub(initPrompt, 0, AppConstant.DEFAULT_APP_NAME_MAX_LENGTH));
+        // 4. 统一限制名称长度
+        appName = StrUtil.sub(appName, 0, AppConstant.APP_NAME_MAX_LENGTH);
+        // 5. 构造入库对象
+        App app = new App();
+        BeanUtil.copyProperties(appAddRequest, app);
+        app.setAppName(appName);
+        app.setCodeGenType(StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.MULTI_FILE.getValue()));
+        app.setUserId(loginUser.getId());
+        // 6. 保存应用，名称与记录一起入库
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        log.info("创建应用成功，应用 id：{}，应用名称：{}", app.getId(), app.getAppName());
+        return app.getId();
+    }
 
     /**
      * 部署应用

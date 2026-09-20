@@ -45,4 +45,14 @@ public interface AppConstant {
      */
     String CODE_DEPLOY_HOST = "http://localhost";
 
+    /**
+     * 应用名称最大长度（AI 生成或用户输入超长时统一截断）
+     */
+    Integer APP_NAME_MAX_LENGTH = 50;
+
+    /**
+     * 应用名称兜底长度（AI 生成失败时截取 initPrompt 的字符数，沿用历史行为）
+     */
+    Integer DEFAULT_APP_NAME_MAX_LENGTH = 12;
+
 }
