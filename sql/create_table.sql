@@ -33,6 +33,7 @@ create table if not exists app
     codeGenType  varchar(64)                        null comment '代码生成类型（枚举）',
     deployKey    varchar(64)                        null comment '部署标识',
     deployedTime datetime                           null comment '部署时间',
+    version      int      default 0                 not null comment '当前版本号（0 表示从未提交版本）',
     priority     int      default 0                 not null comment '优先级',
     userId       bigint                             not null comment '创建用户id',
     editTime     datetime default CURRENT_TIMESTAMP not null comment '编辑时间',
