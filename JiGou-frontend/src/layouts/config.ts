@@ -2,6 +2,7 @@ import { h } from 'vue'
 import type { MenuProps } from 'ant-design-vue'
 import {
   AppstoreOutlined,
+  CompassOutlined,
   HomeOutlined,
   MessageOutlined,
   TeamOutlined,
@@ -25,6 +26,7 @@ export const siteConfig = {
  */
 export const originMenuItems: MenuProps['items'] = [
   { key: '/', label: '主页', icon: () => h(HomeOutlined) },
+  { key: '/app/square', label: '应用广场', icon: () => h(CompassOutlined) },
   { key: '/admin/appManage', label: '应用管理', icon: () => h(AppstoreOutlined) },
   { key: '/admin/chatHistoryManage', label: '对话管理', icon: () => h(MessageOutlined) },
   { key: '/admin/userManage', label: '用户管理', icon: () => h(TeamOutlined) },

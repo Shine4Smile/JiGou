@@ -163,3 +163,18 @@ export async function listMyAppVoByPage(
     ...(options || {}),
   })
 }
+
+/** 此处后端没有提供注释 POST /app/list/public/vo */
+export async function listPublicAppVoByPage(
+  body: API.AppQueryRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponsePageAppVO>('/app/list/public/vo', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}

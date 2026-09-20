@@ -13,6 +13,7 @@ declare namespace API {
   type AppEditRequest = {
     id?: number
     appName?: string
+    visibility?: string
   }
 
   type AppQueryRequest = {
@@ -26,6 +27,7 @@ declare namespace API {
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
+    visibility?: string
     priority?: number
     userId?: number
   }
@@ -35,6 +37,7 @@ declare namespace API {
     appName?: string
     cover?: string
     priority?: number
+    visibility?: string
   }
 
   type AppVersionCommitRequest = {
@@ -74,6 +77,7 @@ declare namespace API {
     deployKey?: string
     deployedTime?: string
     version?: number
+    visibility?: string
     priority?: number
     userId?: number
     createTime?: string

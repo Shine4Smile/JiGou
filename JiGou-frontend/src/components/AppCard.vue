@@ -13,8 +13,9 @@
     <div class="app-card__body">
       <div class="app-card__title-row">
         <span class="app-card__title" :title="app.appName">{{ app.appName || '未命名应用' }}</span>
-        <!-- 创建者与管理员可管理：用包裹元素阻止冒泡（避免点击时同时进入对话页） -->
-        <div v-if="canManage" class="app-card__more-wrap" @click.stop>
+        <!-- 操作入口：用包裹元素阻止冒泡（避免点击时同时进入对话页） -->
+        <!-- 详情所有用户都可查看，编辑 / 删除按创建者与管理员身份显示 -->
+        <div class="app-card__more-wrap" @click.stop>
           <a-dropdown placement="bottomRight" :trigger="['click']">
             <a-button type="text" size="small" class="app-card__more">
               <template #icon><MoreOutlined /></template>
@@ -25,7 +26,8 @@
                   <template #icon><EyeOutlined /></template>
                   <span>查看详情</span>
                 </a-menu-item>
-                <a-menu-item key="edit">
+                <!-- 编辑仅限创建者本人与管理员 -->
+                <a-menu-item v-if="canManage" key="edit">
                   <template #icon><EditOutlined /></template>
                   <span>编辑应用信息</span>
                 </a-menu-item>
@@ -53,6 +55,27 @@
       </div>
 
       <div class="app-card__meta">
+        <!-- 可见范围：创建者与管理员点击可直接切换私有 / 公开，其他用户只读展示 -->
+        <span class="app-card__visibility" @click.stop>
+          <a-popconfirm
+            :title="visibilitySwitchTitle"
+            :description="getVisibilityTip(nextVisibility)"
+            ok-text="确认切换"
+            cancel-text="取消"
+            :disabled="!canManage"
+            @confirm="doSwitchVisibility"
+          >
+            <a-tag
+              class="app-card__visibility-tag"
+              :class="{ 'app-card__visibility-tag--switchable': canManage }"
+              :color="APP_VISIBILITY_TAG_COLOR[app.visibility ?? ''] ?? 'default'"
+              :title="canManage ? VISIBILITY_SWITCH_TIP : ''"
+            >
+              {{ APP_VISIBILITY_LABEL[app.visibility ?? ''] ?? '私有' }}
+              <SwapOutlined v-if="canManage" class="app-card__visibility-icon" />
+            </a-tag>
+          </a-popconfirm>
+        </span>
         <a-tag :color="CODE_GEN_TYPE_TAG_COLOR[app.codeGenType ?? ''] ?? 'default'">
           {{ CODE_GEN_TYPE_LABEL[app.codeGenType ?? ''] ?? '未知类型' }}
         </a-tag>
@@ -63,19 +86,31 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { MenuProps } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   MoreOutlined,
+  SwapOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import ACCESS_ENUM from '@/access/accessEnum'
-import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR, GOOD_APP_PRIORITY } from '@/constants/app'
+import {
+  APP_VISIBILITY_LABEL,
+  APP_VISIBILITY_TAG_COLOR,
+  CODE_GEN_TYPE_LABEL,
+  CODE_GEN_TYPE_TAG_COLOR,
+  GOOD_APP_PRIORITY,
+  VISIBILITY_SWITCH_TIP,
+  getToggledVisibility,
+  getVisibilityTip,
+} from '@/constants/app'
+import { switchAppVisibility } from '@/utils/appVisibility'
 import { formatRelativeTime } from '@/utils/time'
 
 const props = defineProps<{
@@ -88,6 +123,8 @@ const emit = defineEmits<{
   (e: 'detail'): void
   (e: 'edit'): void
   (e: 'delete'): void
+  /** 可见范围切换成功，父组件据此刷新受影响的列表 */
+  (e: 'visibility-change', visibility: string): void
 }>()
 
 const loginUserStore = useLoginUserStore()
@@ -115,6 +152,48 @@ const authorName = computed(
 
 /** 是否为精选应用（后端以 priority = 99 标记精选） */
 const isFeatured = computed(() => props.app.priority === GOOD_APP_PRIORITY)
+
+/* ------------------------------ 可见范围快捷切换 ------------------------------ */
+
+/** 切换请求进行中，避免重复提交 */
+const switchingVisibility = ref(false)
+
+/** 切换后的目标可见范围（私有 <-> 公开） */
+const nextVisibility = computed(() => getToggledVisibility(props.app.visibility))
+
+/** 二次确认标题：明确告知切换后的可见范围 */
+const visibilitySwitchTitle = computed(
+  () => `确认将应用设为${APP_VISIBILITY_LABEL[nextVisibility.value] ?? '私有'}吗？`,
+)
+
+/**
+ * 切换可见范围（仅创建者与管理员可用）
+ *
+ * 只提交 id 与 visibility，切换成功后把新值抛给父组件刷新列表；
+ * 卡片数据由父组件持有的列表对象决定，这里不直接修改 props
+ */
+const doSwitchVisibility = async () => {
+  if (!canManage.value || switchingVisibility.value) {
+    return
+  }
+  switchingVisibility.value = true
+  try {
+    const target = nextVisibility.value
+    const { success, message: errorMessage } = await switchAppVisibility(
+      props.app.id,
+      target,
+      isOwner.value ? 'owner' : 'admin',
+    )
+    if (success) {
+      message.success(`已切换为${APP_VISIBILITY_LABEL[target] ?? '私有'}应用`)
+      emit('visibility-change', target)
+    } else {
+      message.error('切换可见范围失败：' + errorMessage)
+    }
+  } finally {
+    switchingVisibility.value = false
+  }
+}
 
 // 下拉菜单：将操作抛给父组件处理（父组件负责跳转 / 调接口）
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -262,6 +341,15 @@ const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
 
 .app-card__meta :deep(.ant-tag) {
   margin-inline-end: 0;
+}
+
+/* 可见范围标签：可切换时给出手型与图标提示（外层 span 阻止冒泡，避免误进入对话页） */
+.app-card__visibility-tag--switchable {
+  cursor: pointer;
+}
+
+.app-card__visibility-icon {
+  font-size: 12px;
 }
 
 .app-card__time {

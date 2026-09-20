@@ -54,7 +54,12 @@
     <div class="home-body">
       <section class="app-section app-panel">
         <div class="app-section__header">
-          <h2 class="app-section__title">我的作品</h2>
+          <div class="app-section__heading">
+            <h2 class="app-section__title">我的作品</h2>
+            <span class="app-section__desc">
+              设为公开后会展示在应用广场，点击卡片上的可见范围标签即可快速切换
+            </span>
+          </div>
           <a-space v-if="isLogin" :size="8">
             <a-input-search
               v-model:value="myKeyword"
@@ -86,6 +91,7 @@
                   @detail="openDetail(item)"
                   @edit="goEdit(item)"
                   @delete="confirmDelete(item)"
+                  @visibility-change="refreshAfterVisibilityChange"
                 />
               </a-col>
             </a-row>
@@ -104,57 +110,6 @@
         </a-spin>
       </section>
 
-      <section class="app-section app-panel">
-        <div class="app-section__header">
-          <h2 class="app-section__title">精选案例</h2>
-          <a-space v-if="isLogin" :size="8">
-            <a-input-search
-              v-model:value="featuredKeyword"
-              class="app-section__search"
-              placeholder="按名称搜索精选应用"
-              allow-clear
-              @search="searchFeaturedApps"
-            />
-            <a-button :loading="featuredLoading" @click="fetchFeaturedApps">
-              <template #icon><ReloadOutlined /></template>
-            </a-button>
-          </a-space>
-        </div>
-
-        <a-spin :spinning="featuredLoading">
-          <a-empty v-if="!isLogin" description="登录后即可查看精选案例">
-            <a-button type="primary" @click="goLogin">去登录</a-button>
-          </a-empty>
-          <template v-else>
-            <a-empty
-              v-if="!featuredApps.length"
-              description="暂时还没有精选应用，快去创建属于你的作品吧"
-            />
-            <a-row v-else :gutter="[16, 16]">
-              <a-col v-for="item in featuredApps" :key="item.id" :xs="24" :sm="12" :md="8" :lg="6">
-                <AppCard
-                  :app="item"
-                  @open="goChat(item)"
-                  @detail="openDetail(item)"
-                  @edit="goEdit(item)"
-                  @delete="confirmDelete(item)"
-                />
-              </a-col>
-            </a-row>
-            <div v-if="featuredTotal > 0" class="app-section__pager">
-              <a-pagination
-                v-model:current="featuredParams.pageNum"
-                v-model:page-size="featuredParams.pageSize"
-                :total="featuredTotal"
-                :page-size-options="pageSizeOptions"
-                show-size-changer
-                :show-total="(value: number) => `共 ${value} 条`"
-                @change="fetchFeaturedApps"
-              />
-            </div>
-          </template>
-        </a-spin>
-      </section>
     </div>
 
     <!-- 应用详情弹窗 -->
@@ -170,7 +125,6 @@ import { ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import {
   addApp,
   deleteApp,
-  listFeaturedAppVoByPage,
   listMyAppVoByPage,
 } from '@/api/appController.ts'
 import AppCard from '@/components/AppCard.vue'
@@ -296,43 +250,16 @@ const searchMyApps = () => {
   fetchMyApps()
 }
 
-/* ------------------------------ 精选应用 ------------------------------ */
+/* ------------------------------ 可见范围切换 ------------------------------ */
 
-const featuredApps = ref<API.AppVO[]>([])
-const featuredTotal = ref(0)
-const featuredLoading = ref(false)
-const featuredKeyword = ref('')
-const featuredParams = reactive({
-  pageNum: 1,
-  pageSize: DEFAULT_APP_PAGE_SIZE,
-  appName: undefined as string | undefined,
-})
-
-const fetchFeaturedApps = async () => {
-  if (!isLogin.value) {
-    return
-  }
-  featuredLoading.value = true
-  try {
-    // 精选条件由后端固定为 priority = 99，前端只需传分页与名称
-    const res = await listFeaturedAppVoByPage({ ...featuredParams })
-    if (res.data.data) {
-      featuredApps.value = res.data.data.records ?? []
-      featuredTotal.value = res.data.data.totalRow ?? 0
-    } else {
-      message.error('获取精选应用失败：' + (res.data.message ?? '请稍后重试'))
-    }
-  } catch {
-    message.error('获取精选应用失败，请检查网络后重试')
-  } finally {
-    featuredLoading.value = false
-  }
-}
-
-const searchFeaturedApps = () => {
-  featuredParams.appName = featuredKeyword.value.trim() || undefined
-  featuredParams.pageNum = 1
-  fetchFeaturedApps()
+/**
+ * 卡片上切换可见范围成功后刷新「我的作品」
+ *
+ * 公开 / 私有的展示状态、以及应用广场的数据都会随之变化，
+ * 广场列表在应用广场页刷新，这里只需同步自己的列表
+ */
+const refreshAfterVisibilityChange = () => {
+  fetchMyApps()
 }
 
 /* ------------------------------ 应用操作 ------------------------------ */
@@ -367,8 +294,8 @@ const confirmDelete = (app: API.AppVO) => {
       const res = await deleteApp({ id: asApiId(app.id ?? '') })
       if (res.data.code === 0) {
         message.success('删除成功')
-        // 删除后两个列表都可能受影响（如该应用原本是精选应用）
-        await Promise.all([fetchMyApps(), fetchFeaturedApps()])
+        // 删除后我的作品列表需要同步（精选 / 公开列表在应用广场页刷新）
+        await fetchMyApps()
       } else {
         message.error('删除失败，' + (res.data.message ?? '请稍后重试'))
       }
@@ -380,7 +307,6 @@ onMounted(() => {
   // 未登录时不请求列表，避免被登录拦截器重定向
   if (isLogin.value) {
     fetchMyApps()
-    fetchFeaturedApps()
   }
 })
 </script>
@@ -579,11 +505,25 @@ onMounted(() => {
   gap: 16px;
 }
 
+/* 标题 + 说明文案（我的作品区块使用） */
+.app-section__heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .app-section__title {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.88);
+}
+
+.app-section__desc {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
 }
 
 .app-section__search {

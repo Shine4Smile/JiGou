@@ -5,6 +5,7 @@ import AppManagePage from '@/pages/admin/AppManagePage.vue'
 import ChatHistoryManagePage from '@/pages/admin/ChatHistoryManagePage.vue'
 import AppChatPage from '@/pages/app/AppChatPage.vue'
 import AppEditPage from '@/pages/app/AppEditPage.vue'
+import AppSquarePage from '@/pages/app/AppSquarePage.vue'
 import UserLoginPage from '@/pages/user/UserLoginPage.vue'
 import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
 import UserCenterPage from '@/pages/user/UserCenterPage.vue'
@@ -37,6 +38,13 @@ const router = createRouter({
       path: '/user/center',
       name: '个人中心',
       component: UserCenterPage,
+      meta: { access: AccessEnum.USER },
+    },
+    {
+      path: '/app/square',
+      name: '应用广场',
+      component: AppSquarePage,
+      // 广场数据需要登录态（后端公开列表接口要求登录）
       meta: { access: AccessEnum.USER },
     },
     {

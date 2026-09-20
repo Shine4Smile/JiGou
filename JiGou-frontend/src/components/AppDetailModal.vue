@@ -21,6 +21,14 @@
         <a-descriptions-item label="代码生成类型">
           {{ CODE_GEN_TYPE_LABEL[app.codeGenType ?? ''] ?? '-' }}
         </a-descriptions-item>
+        <a-descriptions-item label="可见范围">
+          <a-space :size="8">
+            <a-tag :color="APP_VISIBILITY_TAG_COLOR[app.visibility ?? ''] ?? 'default'">
+              {{ APP_VISIBILITY_LABEL[app.visibility ?? ''] ?? '私有' }}
+            </a-tag>
+            <span class="detail-tip">{{ getVisibilityTip(app.visibility) }}</span>
+          </a-space>
+        </a-descriptions-item>
         <a-descriptions-item label="优先级">
           <a-tag :color="app.priority === GOOD_APP_PRIORITY ? 'gold' : 'default'">
             {{
@@ -60,7 +68,14 @@
 
 <script lang="ts" setup>
 import { UserOutlined } from '@ant-design/icons-vue'
-import { CODE_GEN_TYPE_LABEL, DEFAULT_APP_PRIORITY, GOOD_APP_PRIORITY } from '@/constants/app'
+import {
+  APP_VISIBILITY_LABEL,
+  APP_VISIBILITY_TAG_COLOR,
+  CODE_GEN_TYPE_LABEL,
+  DEFAULT_APP_PRIORITY,
+  GOOD_APP_PRIORITY,
+  getVisibilityTip,
+} from '@/constants/app'
 import { formatDateTime } from '@/utils/time'
 
 withDefaults(
@@ -95,6 +110,12 @@ const emit = defineEmits<{
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 可见范围说明文案 */
+.detail-tip {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
 }
 
 /* 创建用户：头像 + 昵称 */

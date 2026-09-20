@@ -41,6 +41,15 @@
             style="width: 150px"
           />
         </a-form-item>
+        <a-form-item label="可见范围">
+          <a-select
+            v-model:value="searchParams.visibility"
+            :options="visibilityOptions"
+            placeholder="全部"
+            allow-clear
+            style="width: 150px"
+          />
+        </a-form-item>
         <!--        <a-form-item label="创建用户 id">-->
         <!--          <a-input v-model:value="searchUserId" placeholder="请输入创建用户 id" allow-clear />-->
         <!--        </a-form-item>-->
@@ -79,7 +88,7 @@
         :data-source="data"
         :pagination="pagination"
         :loading="loading"
-        :scroll="{ x: 1400 }"
+        :scroll="{ x: 1510 }"
         @change="doTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -96,6 +105,11 @@
           <template v-else-if="column.dataIndex === 'codeGenType'">
             <a-tag :color="CODE_GEN_TYPE_TAG_COLOR[record.codeGenType] ?? 'default'">
               {{ CODE_GEN_TYPE_LABEL[record.codeGenType] ?? record.codeGenType ?? '-' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'visibility'">
+            <a-tag :color="APP_VISIBILITY_TAG_COLOR[record.visibility ?? ''] ?? 'default'">
+              {{ APP_VISIBILITY_LABEL[record.visibility ?? ''] ?? '私有' }}
             </a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'priority'">
@@ -189,6 +203,10 @@ import {
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import EllipsisText from '@/components/EllipsisText.vue'
 import {
+  APP_VISIBILITY_LABEL,
+  APP_VISIBILITY_PRIVATE,
+  APP_VISIBILITY_PUBLIC,
+  APP_VISIBILITY_TAG_COLOR,
   CODE_GEN_TYPE_LABEL,
   CODE_GEN_TYPE_OPTIONS,
   CODE_GEN_TYPE_TAG_COLOR,
@@ -208,11 +226,18 @@ const priorityOptions = [
   { label: '精选（99）', value: GOOD_APP_PRIORITY },
 ]
 
+/** 可见范围筛选选项，取值与后端 AppVisibilityEnum 一致 */
+const visibilityOptions = [
+  { label: '私有', value: APP_VISIBILITY_PRIVATE },
+  { label: '公开', value: APP_VISIBILITY_PUBLIC },
+]
+
 /** 列宽策略与用户管理页一致：固定列宽 + table-layout=fixed，长文本单行省略 */
 const columns: TableColumnsType = [
   { title: '应用名称', dataIndex: 'appName', width: 180 },
   { title: '封面', dataIndex: 'cover', width: 110, align: 'center' },
   { title: '生成类型', dataIndex: 'codeGenType', width: 130, align: 'center' },
+  { title: '可见范围', dataIndex: 'visibility', width: 110, align: 'center' },
   { title: '优先级', dataIndex: 'priority', width: 110, align: 'center' },
   { title: '部署标识', dataIndex: 'deployKey', width: 130 },
   { title: '创建用户', dataIndex: 'user', width: 160 },
@@ -290,6 +315,7 @@ const doReset = () => {
   searchParams.codeGenType = undefined
   searchParams.deployKey = undefined
   searchParams.priority = undefined
+  searchParams.visibility = undefined
   searchId.value = ''
   searchUserId.value = ''
   searchParams.pageNum = 1

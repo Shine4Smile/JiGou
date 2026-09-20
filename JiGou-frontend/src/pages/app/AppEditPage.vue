@@ -48,6 +48,16 @@
               />
             </a-form-item>
 
+            <a-form-item label="可见范围" name="visibility">
+              <a-radio-group
+                v-model:value="formState.visibility"
+                :options="APP_VISIBILITY_OPTIONS"
+              />
+              <template #extra>
+                私有应用只有你和管理员可以查看；公开后所有登录用户都能在首页「应用广场」看到并预览
+              </template>
+            </a-form-item>
+
             <template v-if="isAdmin">
               <a-form-item label="应用封面" name="cover">
                 <div class="cover-field">
@@ -110,6 +120,7 @@
           <a-descriptions-item label="创建用户">
             {{ app.userVO?.userName || app.userVO?.userAccount || '-' }}
           </a-descriptions-item>
+          <a-descriptions-item label="可见范围">{{ visibilityLabel }}</a-descriptions-item>
           <a-descriptions-item label="优先级">{{
             app.priority ?? DEFAULT_APP_PRIORITY
           }}</a-descriptions-item>
@@ -138,7 +149,14 @@ import { LeftOutlined, PictureOutlined, SaveOutlined, StarFilled } from '@ant-de
 import { editApp, getAppById, getAppVoById, updateAppByAdmin } from '@/api/appController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import ACCESS_ENUM from '@/access/accessEnum'
-import { CODE_GEN_TYPE_LABEL, DEFAULT_APP_PRIORITY, GOOD_APP_PRIORITY } from '@/constants/app'
+import {
+  APP_VISIBILITY_LABEL,
+  APP_VISIBILITY_OPTIONS,
+  APP_VISIBILITY_PRIVATE,
+  CODE_GEN_TYPE_LABEL,
+  DEFAULT_APP_PRIORITY,
+  GOOD_APP_PRIORITY,
+} from '@/constants/app'
 import { asApiId } from '@/utils/apiId'
 import { formatDateTime } from '@/utils/time'
 
@@ -157,15 +175,25 @@ const submitting = ref(false)
 const noPermission = ref(false)
 const noPermissionTip = ref('抱歉，你没有权限修改该应用。')
 
+/** 只读信息区展示的可见范围文案（历史数据可见范围为空时按私有展示） */
+const visibilityLabel = computed(
+  () =>
+    APP_VISIBILITY_LABEL[app.value.visibility ?? ''] ??
+    APP_VISIBILITY_LABEL[APP_VISIBILITY_PRIVATE],
+)
+
 const formRef = ref<FormInstance>()
 const formState = reactive<{
   appName: string
   cover: string
   priority: number
+  visibility: string
 }>({
   appName: '',
   cover: '',
   priority: DEFAULT_APP_PRIORITY,
+  // 后端创建应用时默认私有，这里同样以私有作为初始值
+  visibility: APP_VISIBILITY_PRIVATE,
 })
 
 // 封面链接校验：兼容 http(s) 地址、data 图片与以 / 开头的相对路径（与用户管理页保持一致）
@@ -183,6 +211,7 @@ const formRules: Record<string, Rule[]> = {
     { required: true, message: '请输入应用名称', trigger: 'blur' },
     { max: 50, message: '应用名称不能超过 50 个字符', trigger: 'blur' },
   ],
+  visibility: [{ required: true, message: '请选择可见范围', trigger: 'change' }],
   cover: [
     { max: 512, message: '封面链接不能超过 512 个字符', trigger: 'blur' },
     { validator: coverValidator, trigger: 'blur' },
@@ -216,6 +245,8 @@ const loadApp = async () => {
     formState.appName = data.appName ?? ''
     formState.cover = data.cover ?? ''
     formState.priority = data.priority ?? DEFAULT_APP_PRIORITY
+    // 历史数据可能没有可见范围，按私有兜底（与后端 AppVisibilityEnum.isPublic 的判断保持一致）
+    formState.visibility = data.visibility || APP_VISIBILITY_PRIVATE
   } catch {
     noPermission.value = true
     noPermissionTip.value = '获取应用信息失败，请稍后重试。'
@@ -241,8 +272,13 @@ const handleSubmit = async () => {
           appName,
           cover: formState.cover?.trim(),
           priority: formState.priority,
+          visibility: formState.visibility,
         })
-      : await editApp({ id: asApiId(appId), appName })
+      : await editApp({
+          id: asApiId(appId),
+          appName,
+          visibility: formState.visibility,
+        })
     if (res.data.code === 0) {
       message.success('保存成功')
       goBack()

@@ -36,6 +36,24 @@
         >
           {{ CODE_GEN_TYPE_LABEL[app.codeGenType] ?? app.codeGenType }}
         </a-tag>
+        <!-- 可见范围：创建者与管理员点击可直接切换私有 / 公开，其他用户只读展示 -->
+        <a-popconfirm
+          :title="visibilitySwitchTitle"
+          :description="getVisibilityTip(nextVisibility)"
+          ok-text="确认切换"
+          cancel-text="取消"
+          :disabled="!canManage"
+          @confirm="doSwitchVisibility"
+        >
+          <a-tag
+            :class="{ 'chat-header__visibility--switchable': canManage }"
+            :color="APP_VISIBILITY_TAG_COLOR[app.visibility ?? ''] ?? 'default'"
+            :title="canManage ? VISIBILITY_SWITCH_TIP : ''"
+          >
+            {{ APP_VISIBILITY_LABEL[app.visibility ?? ''] ?? '私有' }}
+            <SwapOutlined v-if="canManage" class="chat-header__visibility-icon" />
+          </a-tag>
+        </a-popconfirm>
         <a-tag v-if="app.version" color="geekblue">v{{ app.version }}</a-tag>
         <a-tag v-if="hasDeployed" color="green">已部署</a-tag>
       </div>
@@ -204,6 +222,7 @@ import {
   HistoryOutlined,
   LinkOutlined,
   ReloadOutlined,
+  SwapOutlined,
 } from '@ant-design/icons-vue'
 import { deleteApp, deployApp, getAppVoById } from '@/api/appController.ts'
 import { listAppChatHistory } from '@/api/chatHistoryController.ts'
@@ -213,13 +232,22 @@ import AppVersionDrawer from '@/components/AppVersionDrawer.vue'
 import { siteConfig } from '@/layouts/config'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import ACCESS_ENUM from '@/access/accessEnum'
-import { CODE_GEN_TYPE_LABEL, CODE_GEN_TYPE_TAG_COLOR } from '@/constants/app'
+import {
+  APP_VISIBILITY_LABEL,
+  APP_VISIBILITY_TAG_COLOR,
+  CODE_GEN_TYPE_LABEL,
+  CODE_GEN_TYPE_TAG_COLOR,
+  VISIBILITY_SWITCH_TIP,
+  getToggledVisibility,
+  getVisibilityTip,
+} from '@/constants/app'
 import {
   CHAT_MESSAGE_TYPE,
   DEFAULT_CHAT_HISTORY_PAGE_SIZE,
   GENERATED_HISTORY_SIZE,
 } from '@/constants/chatHistory'
 import { asApiId } from '@/utils/apiId'
+import { switchAppVisibility } from '@/utils/appVisibility'
 import { getPreviewUrl, isPreviewAvailable } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
 
@@ -330,6 +358,48 @@ const loadApp = async (silent = false) => {
     return false
   } finally {
     appLoading.value = false
+  }
+}
+
+/* ------------------------------ 可见范围快捷切换 ------------------------------ */
+
+/** 切换请求进行中，避免重复提交 */
+const switchingVisibility = ref(false)
+
+/** 切换后的目标可见范围（私有 <-> 公开） */
+const nextVisibility = computed(() => getToggledVisibility(app.value.visibility))
+
+/** 二次确认标题：明确告知切换后的可见范围 */
+const visibilitySwitchTitle = computed(
+  () => `确认将应用设为${APP_VISIBILITY_LABEL[nextVisibility.value] ?? '私有'}吗？`,
+)
+
+/**
+ * 切换应用可见范围（创建者与管理员可用）
+ *
+ * 后端为部分更新，只提交 id 与 visibility；成功后就地更新本地状态，
+ * 无需重新拉取整个应用信息（生成 / 部署状态等字段不受影响）
+ */
+const doSwitchVisibility = async () => {
+  if (!canManage.value || switchingVisibility.value || !app.value.id) {
+    return
+  }
+  switchingVisibility.value = true
+  try {
+    const target = nextVisibility.value
+    const { success, message: errorMessage } = await switchAppVisibility(
+      appId,
+      target,
+      isOwner.value ? 'owner' : 'admin',
+    )
+    if (success) {
+      app.value = { ...app.value, visibility: target }
+      message.success(`已切换为${APP_VISIBILITY_LABEL[target] ?? '私有'}应用`)
+    } else {
+      message.error('切换可见范围失败：' + errorMessage)
+    }
+  } finally {
+    switchingVisibility.value = false
   }
 }
 
@@ -743,6 +813,15 @@ onBeforeUnmount(() => {
   flex: none;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
+}
+
+/* 可见范围标签：可切换时给出手型与图标提示 */
+.chat-header__visibility--switchable {
+  cursor: pointer;
+}
+
+.chat-header__visibility-icon {
+  font-size: 12px;
 }
 
 /* 核心内容区：左侧对话区与右侧预览区按 2 : 3 分配宽度 */
