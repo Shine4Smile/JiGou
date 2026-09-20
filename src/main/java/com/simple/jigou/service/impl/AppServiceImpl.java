@@ -6,9 +6,11 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
+import com.simple.jigou.core.AppStorageManager;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
@@ -100,16 +102,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     /**
      * 部署应用
+     * <p>
+     * 部署来源有两种：不指定版本时部署工作区的最新代码，指定版本时部署版本库中该版本的代码快照。
+     * 每次部署都会先清空部署目录，避免上一次部署中已被删除的文件残留在线上
      *
      * @param appId     应用id
      * @param loginUser 登录用户
-     * @return
+     * @param version   部署来源版本号（为 null 表示部署工作区最新代码）
+     * @return 部署后的访问地址
      */
     @Override
-    public String deployApp(Long appId, User loginUser) {
+    public String deployApp(Long appId, User loginUser, Integer version) {
         // 1. 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        ThrowUtils.throwIf(version != null && version <= 0, ErrorCode.PARAMS_ERROR, "部署的版本号不合法");
         // 2. 查询应用信息
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
@@ -117,37 +124,111 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (!app.getUserId().equals(loginUser.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限部署该应用");
         }
-        // 4. 检查是否已有 deployKey
+        // 4. 获取代码生成类型，确定部署来源目录
+        String codeGenType = app.getCodeGenType();
+        ThrowUtils.throwIf(StrUtil.isBlank(codeGenType), ErrorCode.SYSTEM_ERROR, "应用代码生成类型不存在");
+        File sourceDir = version == null
+                ? AppStorageManager.getWorkDir(codeGenType, appId)
+                : AppStorageManager.getVersionDir(codeGenType, appId, version);
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            if (version != null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "该版本不存在或已被清理");
+            }
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
+        }
+        // 5. 复用已有的 deployKey，没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
         String deployKey = app.getDeployKey();
-        // 没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
         if (StrUtil.isBlank(deployKey)) {
             deployKey = RandomUtil.randomString(6);
         }
-        // 5. 获取代码生成类型，构建源目录路径
-        String codeGenType = app.getCodeGenType();
-        String sourceDirName = codeGenType + "_" + appId;
-        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
-        // 6. 检查源目录是否存在
-        File sourceDir = new File(sourceDirPath);
-        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
-        }
-        // 7. 复制文件到部署目录
-        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        // 6. 部署前先清空部署目录，再复制最新内容
+        File deployDir = FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey);
+        FileUtil.del(deployDir);
         try {
-            FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
+            FileUtil.copyContent(sourceDir, deployDir, true);
         } catch (Exception e) {
+            log.error("部署应用失败，appId = {}，部署目录 = {}", appId, deployDir.getAbsolutePath(), e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
         }
-        // 8. 更新应用的 deployKey 和部署时间
-        App updateApp = new App();
-        updateApp.setId(appId);
-        updateApp.setDeployKey(deployKey);
-        updateApp.setDeployedTime(LocalDateTime.now());
-        boolean updateResult = this.updateById(updateApp);
-        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
-        // 9. 返回可访问的 URL
+        // 7. 更新应用的部署信息：部署工作区代码时 deployedVersion 置空，表示线上内容跟随工作区
+        updateDeployInfo(appId, deployKey, version);
+        log.info("部署应用成功，appId = {}，部署标识 = {}，部署来源版本 = {}", appId, deployKey, version);
+        // 8. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+    }
+
+    /**
+     * 取消部署（应用下线）
+     * <p>
+     * 删除部署目录让线上地址立即失效，并清空部署信息，使应用回到「未部署」状态
+     *
+     * @param appId     应用 id
+     * @param loginUser 登录用户
+     * @return 是否取消成功
+     */
+    @Override
+    public boolean undeployApp(Long appId, User loginUser) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 2. 仅应用创建者可以取消部署
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限取消部署该应用");
+        }
+        String deployKey = app.getDeployKey();
+        ThrowUtils.throwIf(StrUtil.isBlank(deployKey), ErrorCode.OPERATION_ERROR, "该应用还未部署，无需取消部署");
+        // 3. 删除部署目录，保证线上地址不再可访问
+        File deployDir = FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey);
+        if (deployDir.exists() && !FileUtil.del(deployDir)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "取消部署失败，请稍后重试");
+        }
+        // 4. 清空部署信息，应用回到未部署状态
+        clearDeployInfo(appId);
+        log.info("取消部署成功，appId = {}，原部署标识 = {}", appId, deployKey);
+        return true;
+    }
+
+    /**
+     * 更新应用的部署信息
+     * <p>
+     * 这里使用 UpdateChain 而不是 updateById：部署工作区最新代码时需要把 deployedVersion 显式写为 null，
+     * 而 updateById 默认会忽略值为 null 的字段，无法表达「线上内容跟随工作区」的语义
+     *
+     * @param appId           应用 id
+     * @param deployKey       部署标识
+     * @param deployedVersion 部署来源版本号（为 null 表示部署工作区最新代码）
+     */
+    private void updateDeployInfo(Long appId, String deployKey, Integer deployedVersion) {
+        LocalDateTime now = LocalDateTime.now();
+        boolean updateResult = UpdateChain.of(this.getMapper())
+                .set(App::getDeployKey, deployKey)
+                .set(App::getDeployedTime, now)
+                .set(App::getDeployedVersion, deployedVersion)
+                .set(App::getEditTime, now)
+                .where(App::getId).eq(appId)
+                .update();
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
+    }
+
+    /**
+     * 清空应用的部署信息（取消部署后调用）
+     * <p>
+     * deployKey / deployedTime / deployedVersion 都需要置为 null，同样使用 UpdateChain 保证 null 能写入
+     *
+     * @param appId 应用 id
+     */
+    private void clearDeployInfo(Long appId) {
+        LocalDateTime now = LocalDateTime.now();
+        boolean updateResult = UpdateChain.of(this.getMapper())
+                .set(App::getDeployKey, null)
+                .set(App::getDeployedTime, null)
+                .set(App::getDeployedVersion, null)
+                .set(App::getEditTime, now)
+                .where(App::getId).eq(appId)
+                .update();
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "清空应用部署信息失败");
     }
 
 

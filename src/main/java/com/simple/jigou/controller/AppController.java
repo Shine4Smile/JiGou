@@ -48,6 +48,8 @@ public class AppController {
 
     /**
      * 应用部署
+     * <p>
+     * 不传版本号时部署工作区的最新代码，传入版本号时部署该历史版本的代码快照
      *
      * @param appDeployRequest 部署请求
      * @param request          请求
@@ -61,8 +63,27 @@ public class AppController {
         // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
         // 调用服务部署应用
-        String deployUrl = appService.deployApp(appId, loginUser);
+        String deployUrl = appService.deployApp(appId, loginUser, appDeployRequest.getVersion());
         return ResultUtils.success(deployUrl);
+    }
+
+    /**
+     * 取消部署（应用下线）
+     * <p>
+     * 仅应用创建者可操作：删除部署产物并清空部署信息，线上地址随即失效
+     *
+     * @param appDeployRequest 部署请求（仅使用其中的应用 id）
+     * @param request          请求
+     * @return 是否取消成功
+     */
+    @PostMapping("/undeploy")
+    public BaseResponse<Boolean> undeployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appService.undeployApp(appId, loginUser));
     }
 
     /**

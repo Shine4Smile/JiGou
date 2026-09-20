@@ -33,6 +33,7 @@ create table if not exists app
     codeGenType  varchar(64)                        null comment '代码生成类型（枚举）',
     deployKey    varchar(64)                        null comment '部署标识',
     deployedTime datetime                           null comment '部署时间',
+    deployedVersion int                             null comment '线上内容来源的版本号（null 表示部署的是工作区最新内容）',
     version      int      default 0                 not null comment '当前版本号（0 表示从未提交版本）',
     visibility   varchar(32) default 'private'      not null comment '可见范围：private 私有 / public 公开',
     priority     int      default 0                 not null comment '优先级',

@@ -47,6 +47,11 @@ public class AppVO implements Serializable {
     private LocalDateTime deployedTime;
 
     /**
+     * 线上内容来源的版本号（null 表示部署的是工作区最新内容）
+     */
+    private Integer deployedVersion;
+
+    /**
      * 当前版本号（0 表示从未提交版本）
      */
     private Integer version;

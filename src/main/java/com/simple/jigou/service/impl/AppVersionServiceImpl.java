@@ -21,11 +21,12 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -51,10 +52,28 @@ public class AppVersionServiceImpl implements AppVersionService {
         int newVersion = AppStorageManager.commitVersion(codeGenType, appId);
         // 2. 应用当前版本号指向新版本
         updateCurrentVersion(appId, newVersion);
-        // 3. 淘汰超出上限的历史版本：保留最新的 N 个版本，当前版本永远保留
+        // 3. 淘汰超出上限的历史版本：保留最新的 N 个版本，当前版本与线上正在部署的版本永远保留
         AppStorageManager.evictOldVersions(codeGenType, appId, AppConstant.MAX_VERSION_COUNT,
-                Collections.singleton(newVersion));
+                buildProtectedVersions(newVersion, app.getDeployedVersion()));
         return newVersion;
+    }
+
+    /**
+     * 构造淘汰历史版本时需要保护的版本号集合
+     * <p>
+     * 除了本次新提交的版本，如果应用已经部署，线上正在使用的版本也不能被清理，否则线上会取不到代码
+     *
+     * @param newVersion      本次提交的新版本号
+     * @param deployedVersion 线上正在部署的版本号（null 表示部署的是工作区最新内容）
+     * @return 需要保护的版本号集合
+     */
+    private Set<Integer> buildProtectedVersions(int newVersion, Integer deployedVersion) {
+        Set<Integer> protectedVersions = new LinkedHashSet<>();
+        protectedVersions.add(newVersion);
+        if (deployedVersion != null && deployedVersion > 0) {
+            protectedVersions.add(deployedVersion);
+        }
+        return protectedVersions;
     }
 
     @Override

@@ -29,12 +29,24 @@ public interface AppService extends IService<App> {
 
     /**
      * 部署应用
+     * <p>
+     * 不指定版本时部署工作区的最新代码，指定版本时部署该历史版本的代码快照
      *
      * @param appId     应用id
      * @param loginUser 登录用户
-     * @return
+     * @param version   部署来源版本号（为 null 表示部署工作区最新代码）
+     * @return 部署后的访问地址
      */
-    String deployApp(Long appId, User loginUser);
+    String deployApp(Long appId, User loginUser, Integer version);
+
+    /**
+     * 取消部署：下线应用，删除部署产物并清空部署信息
+     *
+     * @param appId     应用 id
+     * @param loginUser 登录用户
+     * @return 是否取消成功
+     */
+    boolean undeployApp(Long appId, User loginUser);
 
     /**
      * 将AI回复的代码信息提取出来存入文件
