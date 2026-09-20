@@ -72,6 +72,15 @@ public interface AppService extends IService<App> {
     AppVO getAppVO(App app);
 
     /**
+     * 校验用户是否有权查看应用
+     * 公开应用所有用户均可查看；私有应用仅创建者与管理员可查看
+     *
+     * @param app       应用信息
+     * @param loginUser 登录用户（未登录时传 null）
+     */
+    void checkAppViewPermission(App app, User loginUser);
+
+    /**
      * 删除应用，并关联删除该应用下的所有对话历史（避免产生冗余数据）
      *
      * @param appId 应用 id

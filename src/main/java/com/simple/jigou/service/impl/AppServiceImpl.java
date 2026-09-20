@@ -17,8 +17,10 @@ import com.simple.jigou.model.dto.app.AppAddRequest;
 import com.simple.jigou.model.dto.app.AppQueryRequest;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
+import com.simple.jigou.model.enums.AppVisibilityEnum;
 import com.simple.jigou.model.enums.ChatHistoryMessageTypeEnum;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
+import com.simple.jigou.model.enums.UserRoleEnum;
 import com.simple.jigou.model.vo.AppVO;
 import com.simple.jigou.model.vo.UserVO;
 import com.simple.jigou.service.AppService;
@@ -87,6 +89,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setAppName(appName);
         app.setCodeGenType(StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.MULTI_FILE.getValue()));
         app.setUserId(loginUser.getId());
+        // 可见范围默认私有，用户后续可在应用详情中自行切换为公开
+        app.setVisibility(AppVisibilityEnum.PRIVATE.getValue());
         // 6. 保存应用，名称与记录一起入库
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
@@ -286,6 +290,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String initPrompt = appQueryRequest.getInitPrompt();
         String codeGenType = appQueryRequest.getCodeGenType();
         String deployKey = appQueryRequest.getDeployKey();
+        String visibility = appQueryRequest.getVisibility();
         Integer priority = appQueryRequest.getPriority();
         Long userId = appQueryRequest.getUserId();
         String sortField = appQueryRequest.getSortField();
@@ -294,6 +299,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 .eq("id", id)
                 .eq("codeGenType", codeGenType)
                 .eq("deployKey", deployKey)
+                .eq("visibility", visibility)
                 .eq("priority", priority)
                 .eq("userId", userId)
                 .like("appName", appName)
@@ -350,5 +356,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             appVO.setUserVO(userVO);
         }
         return appVO;
+    }
+
+    /**
+     * 校验用户是否有权查看应用
+     * 公开应用所有用户均可查看；私有应用仅创建者与管理员可查看
+     *
+     * @param app       应用信息
+     * @param loginUser 登录用户（未登录时传 null）
+     */
+    @Override
+    public void checkAppViewPermission(App app, User loginUser) {
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 1. 公开应用：所有用户均可查看
+        if (AppVisibilityEnum.isPublic(app.getVisibility())) {
+            return;
+        }
+        // 2. 私有应用：必须先登录
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "该应用未公开，请先登录");
+        // 3. 私有应用仅创建者与管理员可查看
+        boolean isAdmin = UserRoleEnum.ADMIN.getValue().equals(loginUser.getUserRole());
+        ThrowUtils.throwIf(!isAdmin && !loginUser.getId().equals(app.getUserId()),
+                ErrorCode.NO_AUTH_ERROR, "无权限查看该应用");
     }
 }

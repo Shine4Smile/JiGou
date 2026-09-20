@@ -16,6 +16,7 @@ import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.model.dto.app.*;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
+import com.simple.jigou.model.enums.AppVisibilityEnum;
 import com.simple.jigou.model.vo.AppVO;
 import com.simple.jigou.service.AppService;
 import com.simple.jigou.service.UserService;
@@ -121,7 +122,7 @@ public class AppController {
     }
 
     /**
-     * 根据 id 修改自己的应用（目前仅支持修改应用名称）
+     * 根据 id 修改自己的应用（支持修改应用名称、可见范围）
      *
      * @param appEditRequest 修改应用请求参数接收类
      */
@@ -135,6 +136,10 @@ public class AppController {
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
         // 校验是否为当前用户的应用
         ThrowUtils.throwIf(!loginUser.getId().equals(oldApp.getUserId()), ErrorCode.NO_AUTH_ERROR, "无权限修改该应用");
+        // 可见范围非空时校验取值合法性（仅支持 private 私有 / public 公开）
+        String visibility = appEditRequest.getVisibility();
+        ThrowUtils.throwIf(StrUtil.isNotBlank(visibility) && AppVisibilityEnum.getEnumByValue(visibility) == null,
+                ErrorCode.PARAMS_ERROR, "可见范围取值不合法");
         App app = new App();
         BeanUtil.copyProperties(appEditRequest, app);
         app.setEditTime(LocalDateTime.now());
@@ -167,6 +172,7 @@ public class AppController {
 
     /**
      * 根据 id 查看应用详情（用户）
+     * 公开应用所有登录用户均可查看，私有应用仅创建者与管理员可查看
      *
      * @param id 应用 id
      */
@@ -174,9 +180,11 @@ public class AppController {
     public BaseResponse<AppVO> getAppVOById(long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
         // 需要登录
-        userService.getLoginUser(request);
+        User loginUser = userService.getLoginUser(request);
         App app = appService.getById(id);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
+        // 校验可见范围：私有应用仅创建者与管理员可查看
+        appService.checkAppViewPermission(app, loginUser);
         return ResultUtils.success(appService.getAppVO(app));
     }
 
@@ -203,6 +211,7 @@ public class AppController {
 
     /**
      * 分页查询精选的应用列表（支持根据名称查询，每页最多 20 个）
+     * 仅展示公开应用，私有应用即便被设置为精选也不会出现在列表中
      *
      * @param appQueryRequest 查询请求参数
      */
@@ -218,8 +227,40 @@ public class AppController {
         long pageNum = appQueryRequest.getPageNum();
         // 只查询精选应用
         appQueryRequest.setPriority(AppConstant.GOOD_APP_PRIORITY);
+        // 只查询公开应用，避免私有应用被精选列表泄露
+        appQueryRequest.setVisibility(AppVisibilityEnum.PUBLIC.getValue());
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         // 分页查询精选应用
+        Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
+        return ResultUtils.success(toAppVOPage(appPage));
+    }
+
+    /**
+     * 分页查询公开的应用列表（应用广场数据源，支持根据名称查询）
+     * 强制只查询公开应用，避免通过请求参数绕过可见范围限制
+     * 每页最多 20 个、最多翻 50 页，限制深分页防止爬虫批量抓取
+     *
+     * @param appQueryRequest 查询请求参数
+     */
+    @PostMapping("/list/public/vo")
+    public BaseResponse<Page<AppVO>> listPublicAppVOByPage(@RequestBody AppQueryRequest appQueryRequest,
+                                                           HttpServletRequest request) {
+        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
+        // 需要登录
+        userService.getLoginUser(request);
+        // 每页最多查询20个
+        long pageSize = appQueryRequest.getPageSize();
+        ThrowUtils.throwIf(pageSize > AppConstant.MAX_PAGE_SIZE, ErrorCode.PARAMS_ERROR, "每页最多查询20个应用");
+        // 限制最大页号，避免被用于遍历全量公开数据
+        long pageNum = appQueryRequest.getPageNum();
+        ThrowUtils.throwIf(pageNum > AppConstant.MAX_PAGE_NUM, ErrorCode.PARAMS_ERROR,
+                "最多查询" + AppConstant.MAX_PAGE_NUM + "页应用");
+        // 强制只查询公开应用，且不限制精选优先级（广场展示全部公开应用）
+        appQueryRequest.setVisibility(AppVisibilityEnum.PUBLIC.getValue());
+        appQueryRequest.setPriority(null);
+        // 广场不提供按创建者枚举，避免被用于抓取某个用户的全部应用
+        appQueryRequest.setUserId(null);
+        QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
         return ResultUtils.success(toAppVOPage(appPage));
     }
@@ -246,7 +287,7 @@ public class AppController {
     }
 
     /**
-     * 根据 id 更新任意应用（管理员，支持更新应用名称、应用封面、优先级）
+     * 根据 id 更新任意应用（管理员，支持更新应用名称、应用封面、优先级、可见范围）
      *
      * @param appUpdateRequest 更新应用请求参数接收类
      */
@@ -258,6 +299,10 @@ public class AppController {
         // 判断是否存在
         App oldApp = appService.getById(appId);
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
+        // 可见范围非空时校验取值合法性（仅支持 private 私有 / public 公开）
+        String visibility = appUpdateRequest.getVisibility();
+        ThrowUtils.throwIf(StrUtil.isNotBlank(visibility) && AppVisibilityEnum.getEnumByValue(visibility) == null,
+                ErrorCode.PARAMS_ERROR, "可见范围取值不合法");
         App app = new App();
         BeanUtil.copyProperties(appUpdateRequest, app);
         app.setEditTime(LocalDateTime.now());

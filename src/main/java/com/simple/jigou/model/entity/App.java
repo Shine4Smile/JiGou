@@ -76,6 +76,11 @@ public class App implements Serializable {
     private Integer version;
 
     /**
+     * 可见范围：private 私有（默认，仅创建者与管理员可见）/ public 公开
+     */
+    private String visibility;
+
+    /**
      * 优先级
      */
     private Integer priority;

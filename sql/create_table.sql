@@ -34,6 +34,7 @@ create table if not exists app
     deployKey    varchar(64)                        null comment '部署标识',
     deployedTime datetime                           null comment '部署时间',
     version      int      default 0                 not null comment '当前版本号（0 表示从未提交版本）',
+    visibility   varchar(32) default 'private'      not null comment '可见范围：private 私有 / public 公开',
     priority     int      default 0                 not null comment '优先级',
     userId       bigint                             not null comment '创建用户id',
     editTime     datetime default CURRENT_TIMESTAMP not null comment '编辑时间',
@@ -42,7 +43,8 @@ create table if not exists app
     isDelete     tinyint  default 0                 not null comment '是否删除',
     UNIQUE KEY uk_deployKey (deployKey), -- 确保部署标识唯一
     INDEX idx_appName (appName),         -- 提升基于应用名称的查询性能
-    INDEX idx_userId (userId)            -- 提升基于用户 ID 的查询性能
+    INDEX idx_userId (userId),           -- 提升基于用户 ID 的查询性能
+    INDEX idx_visibility (visibility)    -- 提升应用广场/精选列表的可见范围过滤性能
 ) comment '应用' collate = utf8mb4_unicode_ci;
 
 -- 对话历史表

@@ -20,6 +20,11 @@ public interface AppConstant {
     Integer MAX_PAGE_SIZE = 20;
 
     /**
+     * 应用广场等公开列表的最大页号（限制深分页，防止爬虫拉取全量公开数据）
+     */
+    Integer MAX_PAGE_NUM = 50;
+
+    /**
      * 应用生成目录（同时作为应用的「工作区」目录，存放应用最新代码，预览与部署均基于该目录）
      */
     String CODE_OUTPUT_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
