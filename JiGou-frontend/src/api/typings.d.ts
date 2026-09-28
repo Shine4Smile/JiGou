@@ -236,6 +236,10 @@ declare namespace API {
     version: number
   }
 
+  type getWorkspaceDetailParams = {
+    appId: number
+  }
+
   type listVersionsParams = {
     appId: number
   }

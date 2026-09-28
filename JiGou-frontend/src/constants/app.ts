@@ -41,6 +41,18 @@ export const CODE_GEN_TYPE_TAG_COLOR: Record<string, string> = {
  */
 export const MAX_VERSION_COUNT = 20
 
+/**
+ * 伪版本号：空版本（应用尚无任何代码），用于把首个版本与「无代码」对比
+ */
+export const EMPTY_VERSION = 0
+
+/**
+ * 伪版本号：工作区（应用当前未提交的最新代码），用于与已提交版本对比确认未提交的改动
+ *
+ * 工作区不是版本快照，后端通过 GET /app/version/workspace 单独读取
+ */
+export const WORKSPACE_VERSION = -1
+
 /** 应用可见范围：私有（默认），仅创建者与管理员可见，对应后端 AppVisibilityEnum.PRIVATE */
 export const APP_VISIBILITY_PRIVATE = 'private'
 

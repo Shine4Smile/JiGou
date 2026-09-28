@@ -88,6 +88,21 @@ public class AppVersionController {
     }
 
     /**
+     * 查看应用工作区（当前未提交的最新代码）内容（创建者或管理员，用于与已提交版本对比）
+     *
+     * @param appId   应用 id
+     * @param request 请求对象
+     * @return 工作区详情（文件名 -> 文件内容）
+     */
+    @GetMapping("/workspace")
+    public BaseResponse<AppVersionDetailVO> getWorkspaceDetail(@RequestParam Long appId,
+                                                               HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appVersionService.getWorkspaceDetail(appId, loginUser));
+    }
+
+    /**
      * 回退到指定版本：把该版本的代码恢复到工作区（仅应用创建者）
      *
      * @param appVersionRollbackRequest 回退版本请求

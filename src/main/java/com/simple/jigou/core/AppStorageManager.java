@@ -24,7 +24,9 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -212,6 +214,31 @@ public class AppStorageManager {
             lastModified = Math.max(lastModified, file.lastModified());
         }
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(lastModified), ZoneId.systemDefault());
+    }
+
+    /**
+     * 读取目录下的全部代码文件内容（工作区目录与版本目录通用）
+     * <p>
+     * 与「版本对比」功能配套：版本目录用于已提交的历史版本快照，工作区目录用于当前未提交的最新代码，
+     * 目录不存在（如从未生成过代码）时返回空集合，调用方无需额外判空
+     *
+     * @param dir 代码目录（工作区目录或版本目录）
+     * @return 文件名（相对路径，统一使用 '/' 分隔）-> 文件内容
+     */
+    public static Map<String, String> readCodeFiles(File dir) {
+        Map<String, String> fileMap = new LinkedHashMap<>();
+        if (dir == null || !dir.exists()) {
+            return fileMap;
+        }
+        List<File> fileList = FileUtil.loopFiles(dir);
+        // 固定按绝对路径排序，保证同一份代码每次读取的文件顺序一致
+        fileList.sort(Comparator.comparing(File::getAbsolutePath));
+        Path rootPath = dir.toPath();
+        for (File file : fileList) {
+            String fileName = rootPath.relativize(file.toPath()).toString().replace('\\', '/');
+            fileMap.put(fileName, FileUtil.readString(file, StandardCharsets.UTF_8));
+        }
+        return fileMap;
     }
 
     /**

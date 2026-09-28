@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 应用文件存储与版本管理测试
@@ -153,6 +154,28 @@ class AppStorageManagerTest {
         // 5. 目录不存在时再次删除仍返回成功（应用可能从未生成过代码）
         Assertions.assertTrue(AppStorageManager.deleteWorkDir(CODE_GEN_TYPE, TEST_APP_ID));
         Assertions.assertTrue(AppStorageManager.deleteVersionRootDir(CODE_GEN_TYPE, TEST_APP_ID));
+    }
+
+    @Test
+    void readCodeFilesReturnsRelativePathMap() {
+        // 1. 工作区中的多级目录文件以「相对路径 -> 内容」形式返回
+        File workDir = AppStorageManager.getWorkDir(CODE_GEN_TYPE, TEST_APP_ID);
+        writeWorkFile("index.html", "<h1>work</h1>");
+        FileUtil.writeString("body{color:red}", new File(workDir, "css/style.css"), StandardCharsets.UTF_8);
+        Map<String, String> workFileMap = AppStorageManager.readCodeFiles(workDir);
+        Assertions.assertEquals(2, workFileMap.size());
+        Assertions.assertEquals("<h1>work</h1>", workFileMap.get("index.html"));
+        // 路径分隔符统一为 '/'，保证前端对比两个版本时文件名能对齐
+        Assertions.assertEquals("body{color:red}", workFileMap.get("css/style.css"));
+
+        // 2. 提交版本后，版本目录可按同样方式读取（版本对比的数据来源）
+        int v1 = AppStorageManager.commitVersion(CODE_GEN_TYPE, TEST_APP_ID);
+        Assertions.assertEquals(workFileMap,
+                AppStorageManager.readCodeFiles(AppStorageManager.getVersionDir(CODE_GEN_TYPE, TEST_APP_ID, v1)));
+
+        // 3. 目录不存在（应用从未生成过代码）时返回空集合而不是抛异常
+        Assertions.assertTrue(AppStorageManager.readCodeFiles(
+                AppStorageManager.getWorkDir(CODE_GEN_TYPE, TEST_APP_ID + 1)).isEmpty());
     }
 
     /**

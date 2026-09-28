@@ -9,17 +9,26 @@
         <a-tag v-if="uncommitted" color="orange" class="version-toolbar__tag">有未提交修改</a-tag>
         <a-tag v-else-if="currentVersion > 0" class="version-toolbar__tag">与当前版本一致</a-tag>
       </div>
-      <a-tooltip :title="commitTip">
-        <a-button
-          type="primary"
-          :loading="committing"
-          :disabled="!canCommit || !hasCode"
-          @click="doCommit"
-        >
-          <template #icon><CloudUploadOutlined /></template>
-          <span>提交版本</span>
-        </a-button>
-      </a-tooltip>
+      <a-space class="version-toolbar__actions">
+        <!-- 版本对比默认入口：工作区（当前未提交的最新代码）对比已提交的最新版本 -->
+        <a-tooltip title="把工作区当前代码与已提交的最新版本对比，确认未提交的改动">
+          <a-button @click="openWorkspaceDiff">
+            <template #icon><DiffOutlined /></template>
+            <span>对比工作区</span>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :title="commitTip">
+          <a-button
+            type="primary"
+            :loading="committing"
+            :disabled="!canCommit || !hasCode"
+            @click="doCommit"
+          >
+            <template #icon><CloudUploadOutlined /></template>
+            <span>提交版本</span>
+          </a-button>
+        </a-tooltip>
+      </a-space>
     </div>
 
     <a-spin :spinning="loading">
@@ -90,11 +99,11 @@
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
 import { Modal, message } from 'ant-design-vue'
-import { CloudUploadOutlined } from '@ant-design/icons-vue'
+import { CloudUploadOutlined, DiffOutlined } from '@ant-design/icons-vue'
 import { commitVersion, listVersions, rollbackVersion } from '@/api/appVersionController.ts'
 import AppVersionCodeModal from '@/components/AppVersionCodeModal.vue'
 import AppVersionDiffModal from '@/components/AppVersionDiffModal.vue'
-import { MAX_VERSION_COUNT } from '@/constants/app'
+import { EMPTY_VERSION, MAX_VERSION_COUNT, WORKSPACE_VERSION } from '@/constants/app'
 import { asApiId } from '@/utils/apiId'
 import { formatDateTime, formatRelativeTime } from '@/utils/time'
 
@@ -267,10 +276,10 @@ const doRollback = async (version?: number) => {
 const codeOpen = ref(false)
 const codeVersion = ref(0)
 const diffOpen = ref(false)
-/** 对比弹窗默认的基准版本（0 表示空版本） */
-const diffBaseVersion = ref(0)
-/** 对比弹窗默认的对比版本 */
-const diffTargetVersion = ref(0)
+/** 对比弹窗默认的基准版本（EMPTY_VERSION 表示空版本，即应用尚没有任何代码） */
+const diffBaseVersion = ref(EMPTY_VERSION)
+/** 对比弹窗默认的对比版本（默认取工作区，即查看当前未提交的最新改动） */
+const diffTargetVersion = ref(WORKSPACE_VERSION)
 
 /**
  * 查看某个版本的完整代码
@@ -298,8 +307,20 @@ const openDiff = (version?: number) => {
     return
   }
   const index = versionList.value.findIndex((item) => item.version === version)
-  diffBaseVersion.value = versionList.value[index + 1]?.version ?? 0
+  diffBaseVersion.value = versionList.value[index + 1]?.version ?? EMPTY_VERSION
   diffTargetVersion.value = version
+  diffOpen.value = true
+}
+
+/**
+ * 对比工作区当前代码与已提交的最新版本（版本对比的默认入口）
+ *
+ * 无需判断工作区是否有改动：从未提交过版本时基准取「空版本」，即查看工作区新增的全部内容，
+ * 每次打开都会重新读取工作区内容，因此提交后再次打开看到的就是最新的差异
+ */
+const openWorkspaceDiff = () => {
+  diffBaseVersion.value = currentVersion.value > 0 ? currentVersion.value : EMPTY_VERSION
+  diffTargetVersion.value = WORKSPACE_VERSION
   diffOpen.value = true
 }
 
@@ -344,6 +365,11 @@ const close = () => {
 .version-toolbar__tag {
   align-self: flex-start;
   margin-inline-end: 0;
+}
+
+/* 操作按钮组：不参与压缩，避免抽屉变窄时按钮换行 */
+.version-toolbar__actions {
+  flex: none;
 }
 
 /* 版本列表 */

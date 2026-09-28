@@ -42,6 +42,17 @@ public interface AppVersionService {
     AppVersionDetailVO getVersionDetail(Long appId, Integer version, User loginUser);
 
     /**
+     * 查询应用工作区（当前未提交的最新代码）内容，用于与已提交版本对比
+     * <p>
+     * 工作区不是版本快照，没有版本号，仅应用创建者或管理员可查看
+     *
+     * @param appId     应用 id
+     * @param loginUser 登录用户
+     * @return 工作区详情（文件内容映射）
+     */
+    AppVersionDetailVO getWorkspaceDetail(Long appId, User loginUser);
+
+    /**
      * 回退版本：把指定版本的代码恢复到应用工作区，历史版本本身不受影响
      * <p>
      * 回退后工作区内容 = 该版本内容，应用当前版本号同步更新为该版本号，仅应用创建者可操作

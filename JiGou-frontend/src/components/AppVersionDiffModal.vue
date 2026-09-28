@@ -78,8 +78,9 @@
 import { computed, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { ArrowRightOutlined, FileOutlined } from '@ant-design/icons-vue'
-import { getVersionDetail } from '@/api/appVersionController.ts'
+import { getVersionDetail, getWorkspaceDetail } from '@/api/appVersionController.ts'
 import CodeDiffViewer from '@/components/CodeDiffViewer.vue'
+import { EMPTY_VERSION, WORKSPACE_VERSION } from '@/constants/app'
 import { asApiId } from '@/utils/apiId'
 import {
   FILE_DIFF_STATUS_COLOR,
@@ -87,9 +88,6 @@ import {
   diffFileMap,
   normalizeFileMap,
 } from '@/utils/lineDiff'
-
-/** 空版本：表示「还没有任何代码」，用于把首个版本与空内容对比 */
-const EMPTY_VERSION = 0
 
 const props = withDefaults(
   defineProps<{
@@ -99,15 +97,15 @@ const props = withDefaults(
     appId: string | number
     /** 可选版本号列表（降序），用于下拉选择 */
     versions?: number[]
-    /** 打开时默认的基准版本（0 表示空版本） */
+    /** 打开时默认的基准版本（EMPTY_VERSION 表示空版本） */
     initialBaseVersion?: number
-    /** 打开时默认的对比版本 */
+    /** 打开时默认的对比版本（WORKSPACE_VERSION 表示工作区当前未提交的代码） */
     initialTargetVersion?: number
   }>(),
   {
     versions: () => [],
     initialBaseVersion: EMPTY_VERSION,
-    initialTargetVersion: EMPTY_VERSION,
+    initialTargetVersion: WORKSPACE_VERSION,
   },
 )
 
@@ -125,9 +123,28 @@ const targetFileMap = ref<Record<string, string>>({})
 /** 当前在右侧展示差异的文件 */
 const activeFileName = ref('')
 
-/** 版本号列表 -> 下拉选项（额外提供「空版本」用于查看首个版本的完整内容） */
+/** 伪版本号 -> 下拉文案（工作区与空版本都不是真实版本快照，但都可以参与对比） */
+const PSEUDO_VERSION_LABEL: Record<number, string> = {
+  [WORKSPACE_VERSION]: '工作区（未提交）',
+  [EMPTY_VERSION]: '空版本（无代码）',
+}
+
+/**
+ * 版本号 -> 展示文案
+ *
+ * @param version 真实版本号或伪版本号（WORKSPACE_VERSION / EMPTY_VERSION）
+ */
+const versionLabel = (version: number) => PSEUDO_VERSION_LABEL[version] ?? `v${version}`
+
+/**
+ * 版本号列表 -> 下拉选项
+ *
+ * 额外提供两类伪版本：工作区（应用当前未提交的最新代码）与空版本（尚没有任何代码），
+ * 两者都可以与任意已提交版本对比
+ */
 const toOptions = (versions: number[]) => [
-  { label: '空版本（无代码）', value: EMPTY_VERSION },
+  { label: versionLabel(WORKSPACE_VERSION), value: WORKSPACE_VERSION },
+  { label: versionLabel(EMPTY_VERSION), value: EMPTY_VERSION },
   ...versions.map((version) => ({ label: `v${version}`, value: version })),
 ]
 const baseOptions = computed(() => toOptions(props.versions ?? []))
@@ -150,17 +167,22 @@ const summaryText = computed(() => {
 /**
  * 拉取某个版本的文件内容
  *
- * @param version 版本号，EMPTY_VERSION 表示空内容（该版本之前的「无代码」状态）
+ * @param version 版本号；EMPTY_VERSION 表示空内容（该版本之前的「无代码」状态），
+ *                WORKSPACE_VERSION 表示工作区当前未提交的最新代码
  */
 const loadVersionFileMap = async (version: number) => {
   if (version === EMPTY_VERSION) {
     return {}
   }
-  const res = await getVersionDetail({ appId: asApiId(props.appId), version })
+  // 工作区不是版本快照、没有版本号，走后端单独的工作区接口读取
+  const res =
+    version === WORKSPACE_VERSION
+      ? await getWorkspaceDetail({ appId: asApiId(props.appId) })
+      : await getVersionDetail({ appId: asApiId(props.appId), version })
   if (res.data.code === 0) {
     return normalizeFileMap(res.data.data?.fileMap)
   }
-  message.error(`获取版本 v${version} 内容失败：` + (res.data.message ?? '请稍后重试'))
+  message.error(`获取「${versionLabel(version)}」内容失败：` + (res.data.message ?? '请稍后重试'))
   return {}
 }
 
@@ -191,7 +213,7 @@ watch(
       return
     }
     const base = props.initialBaseVersion ?? EMPTY_VERSION
-    const target = props.initialTargetVersion ?? EMPTY_VERSION
+    const target = props.initialTargetVersion ?? WORKSPACE_VERSION
     if (baseVersion.value === base && targetVersion.value === target) {
       await loadDiff()
       return

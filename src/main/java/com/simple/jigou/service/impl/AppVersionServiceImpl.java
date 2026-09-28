@@ -1,6 +1,5 @@
 package com.simple.jigou.service.impl;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AppStorageManager;
@@ -19,13 +18,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -108,7 +103,18 @@ public class AppVersionServiceImpl implements AppVersionService {
         AppVersionDetailVO appVersionDetailVO = new AppVersionDetailVO();
         appVersionDetailVO.setVersion(version);
         appVersionDetailVO.setCommitTime(AppStorageManager.getCommitTime(codeGenType, appId, version));
-        appVersionDetailVO.setFileMap(readVersionFiles(versionDir));
+        appVersionDetailVO.setFileMap(AppStorageManager.readCodeFiles(versionDir));
+        return appVersionDetailVO;
+    }
+
+    @Override
+    public AppVersionDetailVO getWorkspaceDetail(Long appId, User loginUser) {
+        App app = getAccessibleApp(appId, loginUser);
+        // 工作区存放的是应用最新代码（AI 每次生成就地覆盖），读取后与已提交版本对比即可确认未提交的改动
+        AppVersionDetailVO appVersionDetailVO = new AppVersionDetailVO();
+        appVersionDetailVO.setVersion(getCurrentVersion(app));
+        appVersionDetailVO.setFileMap(AppStorageManager.readCodeFiles(
+                AppStorageManager.getWorkDir(app.getCodeGenType(), appId)));
         return appVersionDetailVO;
     }
 
@@ -121,23 +127,6 @@ public class AppVersionServiceImpl implements AppVersionService {
         // 2. 应用当前版本号指向被回退的版本
         updateCurrentVersion(appId, version);
         return true;
-    }
-
-    /**
-     * 读取版本目录下的所有文件内容
-     *
-     * @param versionDir 版本目录
-     * @return 文件名（相对路径）-> 文件内容
-     */
-    private Map<String, String> readVersionFiles(File versionDir) {
-        List<File> fileList = FileUtil.loopFiles(versionDir);
-        fileList.sort(Comparator.comparing(File::getAbsolutePath));
-        Map<String, String> fileMap = new LinkedHashMap<>();
-        for (File file : fileList) {
-            String fileName = versionDir.toPath().relativize(file.toPath()).toString().replace('\\', '/');
-            fileMap.put(fileName, FileUtil.readString(file, StandardCharsets.UTF_8));
-        }
-        return fileMap;
     }
 
     /**
