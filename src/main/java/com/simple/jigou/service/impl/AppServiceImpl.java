@@ -12,6 +12,7 @@ import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
 import com.simple.jigou.core.AppStorageManager;
+import com.simple.jigou.core.handler.StreamHandlerExecutor;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
@@ -43,7 +44,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +66,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
+
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
 
     /**
      * 创建应用
@@ -95,7 +98,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setAppName(appName);
-        app.setCodeGenType(StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.MULTI_FILE.getValue()));
+        app.setCodeGenType(StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.VUE_PROJECT.getValue()));
         app.setUserId(loginUser.getId());
         // 可见范围默认私有，用户后续可在应用详情中自行切换为公开
         app.setVisibility(AppVisibilityEnum.PRIVATE.getValue());
@@ -269,50 +272,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Long userId = loginUser.getId();
         boolean saved = chatHistoryService.addChatMessage(appId, userId, message, ChatHistoryMessageTypeEnum.USER);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "保存用户消息失败");
-        // 6. 调用 AI 生成代码，并实时收集 AI 回复内容用于落库
-        StringBuilder aiMessageBuilder = new StringBuilder();
-        // 标记本次生成是否已结束（成功或失败），避免连接断开时重复记录中断信息
-        AtomicBoolean finished = new AtomicBoolean(false);
-        Flux<String> codeStream;
-        try {
-            codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        } catch (Exception e) {
-            // 生成入口就抛异常（没有返回流）：同样记录错误信息，保证对话记录完整
-            finished.set(true);
-            saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
-                    StrUtil.format("AI 生成失败：{}", StrUtil.blankToDefault(e.getMessage(), "未知异常")));
-            throw e;
-        }
-        return codeStream
-                .doOnNext(aiMessageBuilder::append)
-                .doOnComplete(() -> {
-                    // AI 生成成功：保存完整的 AI 回复
-                    finished.set(true);
-                    try {
-                        String aiMessage = aiMessageBuilder.toString();
-                        if (StrUtil.isNotBlank(aiMessage)) {
-                            chatHistoryService.addChatMessage(appId, userId, aiMessage, ChatHistoryMessageTypeEnum.AI);
-                        }
-                    } catch (Exception e) {
-                        // 落库失败不影响已经返回给前端的生成结果，仅记录日志
-                        log.error("保存 AI 消息失败，appId = {}", appId, e);
-                    }
-                })
-                .doOnError(throwable -> {
-                    // AI 生成失败：已生成的内容与错误信息都落库，保证对话历史完整、便于排查问题
-                    finished.set(true);
-                    saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
-                            StrUtil.format("AI 生成失败：{}", StrUtil.blankToDefault(throwable.getMessage(), "未知异常")));
-                })
-                .doOnCancel(() -> {
-                    // 用户点了「停止生成」或连接断开：已生成的内容与中断信息都落库，
-                    // 避免对话历史里只剩用户消息，导致对话记录不完整
-                    if (finished.get()) {
-                        return;
-                    }
-                    saveCodeGenErrorChatHistory(appId, userId, aiMessageBuilder,
-                            "AI 生成已中断（用户停止生成或连接断开）");
-                });
+        // 6. 调用 AI 生成代码（流式）
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }
 
     /**
@@ -421,7 +384,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 3. redis 中的会话记忆与缓存的 AI 服务实例：避免已删除应用的上下文继续被使用
         try {
             aiCodeGeneratorServiceFactory.deleteChatMemory(appId);
-            aiCodeGeneratorServiceFactory.invalidate(appId);
+            aiCodeGeneratorServiceFactory.invalidate(appId, CodeGenTypeEnum.getEnumByValue(codeGenType));
         } catch (Exception e) {
             log.error("清理应用会话缓存失败，appId = {}", appId, e);
         }
