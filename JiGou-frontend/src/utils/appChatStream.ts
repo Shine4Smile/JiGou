@@ -58,6 +58,25 @@ const parseChunk = (data: string) => {
   }
 }
 
+/**
+ * 解析错误帧中的数据
+ * 后端生成中途失败时以 SSE 的 error 事件返回，数据形如 {"message": "xxx", "code": 40100}
+ *
+ * @param data 帧中的 data 内容
+ */
+const parseErrorChunk = (data: string): { message?: string; code?: number } => {
+  if (!data) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(data) as { message?: string; code?: number }
+    return { message: parsed?.message, code: parsed?.code }
+  } catch {
+    // 不是 JSON 时按纯文本处理，保证错误提示不丢
+    return { message: data }
+  }
+}
+
 export type GenCodeStreamOptions = {
   /** 应用 id（后端 Long 以字符串返回，原样透传） */
   appId: string | number
@@ -108,6 +127,10 @@ export const streamGenCode = async (options: GenCodeStreamOptions) => {
   let buffer = ''
   let content = ''
   let finished = false
+  // 是否收到后端的结束事件（event: done），用于识别连接被意外中断的情况
+  let receivedDone = false
+  // 后端以 event: error 返回的失败信息，优先于「中断」提示抛给调用方
+  let streamError: AppChatStreamError | undefined
 
   while (!finished) {
     const { done, value } = await reader.read()
@@ -125,6 +148,14 @@ export const streamGenCode = async (options: GenCodeStreamOptions) => {
       const frame = parseFrame(frameText)
       // 后端在流末尾额外发送 event: done，主动告知生成完成
       if (frame.event === 'done') {
+        receivedDone = true
+        finished = true
+        break
+      }
+      // 后端生成中途失败（模型报错、工具调用异常等），用 error 事件把失败原因传给前端
+      if (frame.event === 'error') {
+        const { message: errorMessage, code } = parseErrorChunk(frame.data)
+        streamError = new AppChatStreamError(errorMessage || '生成失败，请稍后重试', code)
         finished = true
         break
       }
@@ -138,6 +169,13 @@ export const streamGenCode = async (options: GenCodeStreamOptions) => {
   }
   // 流结束时同步取消底层读取，释放连接
   await reader.cancel().catch(() => undefined)
+  if (streamError) {
+    throw streamError
+  }
+  // 未收到结束事件说明连接被中断（后端异常退出、网络断开等），不能当作生成成功
+  if (!receivedDone) {
+    throw new AppChatStreamError('生成意外中断，请重试')
+  }
   onDone?.(content)
   return content
 }

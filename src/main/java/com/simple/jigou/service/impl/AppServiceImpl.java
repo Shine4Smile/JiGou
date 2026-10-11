@@ -279,28 +279,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     /**
-     * 保存 AI 生成失败 / 中断的对话历史（含已生成的部分内容）
-     * 保证即使 AI 回复失败，对话记录也是完整的，同时便于排查问题
-     *
-     * @param appId            应用 id
-     * @param userId           用户 id
-     * @param aiMessageBuilder AI 已生成的内容
-     * @param errorMessage     错误信息
-     */
-    private void saveCodeGenErrorChatHistory(Long appId, Long userId, StringBuilder aiMessageBuilder, String errorMessage) {
-        try {
-            String partialMessage = aiMessageBuilder.toString();
-            if (StrUtil.isNotBlank(partialMessage)) {
-                chatHistoryService.addChatMessage(appId, userId, partialMessage, ChatHistoryMessageTypeEnum.AI);
-            }
-            chatHistoryService.addChatMessage(appId, userId, errorMessage, ChatHistoryMessageTypeEnum.ERROR);
-        } catch (Exception e) {
-            // 落库失败不影响已经返回给前端的生成结果，仅记录日志
-            log.error("保存 AI 错误消息失败，appId = {}", appId, e);
-        }
-    }
-
-    /**
      * 删除应用，并关联删除该应用下的所有对话历史与代码数据
      *
      * <p>加事务保证「删除对话历史」与「删除应用」两步要么都成功、要么都回滚，

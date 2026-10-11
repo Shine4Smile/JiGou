@@ -11,6 +11,7 @@ import com.simple.jigou.common.DeleteRequest;
 import com.simple.jigou.common.ResultUtils;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.constant.UserConstant;
+import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.model.dto.app.*;
@@ -22,6 +23,7 @@ import com.simple.jigou.service.AppService;
 import com.simple.jigou.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -36,6 +39,7 @@ import java.util.Map;
  *
  * @author simple
  */
+@Slf4j
 @RestController
 @RequestMapping("/app")
 public class AppController {
@@ -114,6 +118,13 @@ public class AppController {
                             .data(jsonData)
                             .build();
                 })
+                // 生成中途失败（模型报错、工具调用异常、连接中断等）：
+                // 此时 HTTP 200 与已生成的内容可能已经发出，无法再改状态码，
+                // 只能通过 SSE 的 error 事件把失败原因传给前端，避免前端把断流当成「生成完成」
+                .onErrorResume(error -> {
+                    log.error("[appId: {}] 生成代码的流式响应失败", appId, error);
+                    return Flux.just(buildErrorEvent(error));
+                })
                 .concatWith(Mono.just(
                         // 发送结束事件，主动告诉前端生成完成
                         ServerSentEvent.<String>builder()
@@ -121,6 +132,26 @@ public class AppController {
                                 .data("")
                                 .build()
                 ));
+    }
+
+    /**
+     * 构建错误事件
+     * <p>
+     * 数据同样使用 JSON 格式；业务异常额外带上错误码，便于前端区分「未登录」等场景
+     *
+     * @param error 流式生成过程中的异常
+     * @return SSE 错误事件
+     */
+    private ServerSentEvent<String> buildErrorEvent(Throwable error) {
+        Map<String, Object> errorMap = new LinkedHashMap<>();
+        errorMap.put("message", StrUtil.blankToDefault(error.getMessage(), "生成失败，请稍后重试"));
+        if (error instanceof BusinessException businessException) {
+            errorMap.put("code", businessException.getCode());
+        }
+        return ServerSentEvent.<String>builder()
+                .event("error")
+                .data(JSONUtil.toJsonStr(errorMap))
+                .build();
     }
 
 

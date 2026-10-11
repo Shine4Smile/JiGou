@@ -52,9 +52,9 @@ public class JsonMessageStreamHandler {
                     chatHistoryService.addChatMessage(appId, loginUser.getId(), aiResponse, ChatHistoryMessageTypeEnum.AI);
                 })
                 .doOnError(error -> {
-                    // 如果AI回复失败，也要记录错误消息
-                    String errorMessage = "AI回复失败: " + error.getMessage();
-                    chatHistoryService.addChatMessage(appId, loginUser.getId(), errorMessage, ChatHistoryMessageTypeEnum.AI);
+                    // AI 生成失败也要记录，但类型标记为 ERROR：前端按失败样式展示，加载会话记忆时也会跳过
+                    String errorMessage = "AI回复失败: " + StrUtil.blankToDefault(error.getMessage(), error.getClass().getSimpleName());
+                    chatHistoryService.addChatMessage(appId, loginUser.getId(), errorMessage, ChatHistoryMessageTypeEnum.ERROR);
                 });
     }
 
