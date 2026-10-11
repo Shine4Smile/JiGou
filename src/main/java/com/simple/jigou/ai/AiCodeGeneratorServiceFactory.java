@@ -2,6 +2,7 @@ package com.simple.jigou.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.simple.jigou.ai.memory.ToolCallPairingChatMemory;
 import com.simple.jigou.ai.tools.FileWriteTool;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
@@ -9,6 +10,7 @@ import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import com.simple.jigou.service.ChatHistoryService;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -111,9 +113,13 @@ public class AiCodeGeneratorServiceFactory {
     /**
      * 失效指定应用的 AI 服务实例缓存
      * <p>
-     * 应用被删除后调用：缓存中的实例持有该应用的会话记忆，继续保留既占用内存，语义上也已无归属
+     * 两种调用场景：
+     * 1. 应用被删除：缓存中的实例持有该应用的会话记忆，继续保留既占用内存，语义上也已无归属
+     * 2. 流式生成中断：会话记忆可能残留「有工具调用无工具结果」的非法序列，失效后下次请求会重建服务，
+     *    并从数据库历史重新加载记忆，让记忆回到干净状态
      *
-     * @param appId 应用 id
+     * @param appId       应用 id
+     * @param codeGenType 代码生成类型
      */
     public void invalidate(long appId, CodeGenTypeEnum codeGenType) {
         String key = buildCacheKey(appId, codeGenType);
@@ -134,14 +140,15 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
-     * 方案一：内置机制隔离。给AI服务方法增加@MemoryId int memoryId注解和参数，通过chatMemoryProvider为每个appId分配会话记忆
-     * 方案二：AI service隔离。根据appId获取服务，给每个应用分配一个专属的AI service，每个AI service绑定独立的会话记忆
-     * 这里采用方案二
+     * 构建应用的会话记忆
+     * <p>
+     * 记忆写入被中断时可能在 redis 中残留「有工具调用无工具结果」的非法序列，
+     * 这里用 {@link ToolCallPairingChatMemory} 装饰，读取记忆交给模型前自动修复，保证请求始终合法
      *
-     * @return
+     * @param appId 应用 id
+     * @return 带工具调用修复能力的会话记忆
      */
-    public AiCodeGeneratorService createAiCodeGeneratorService(long appId) {
-        // 根据 appId 构建独立的对话记忆
+    private ChatMemory buildChatMemory(long appId) {
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
                 .id(appId)
@@ -150,6 +157,19 @@ public class AiCodeGeneratorServiceFactory {
                 .build();
         // 从数据库加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
+        return new ToolCallPairingChatMemory(chatMemory);
+    }
+
+    /**
+     * 方案一：内置机制隔离。给AI服务方法增加@MemoryId int memoryId注解和参数，通过chatMemoryProvider为每个appId分配会话记忆
+     * 方案二：AI service隔离。根据appId获取服务，给每个应用分配一个专属的AI service，每个AI service绑定独立的会话记忆
+     * 这里采用方案二
+     *
+     * @return
+     */
+    public AiCodeGeneratorService createAiCodeGeneratorService(long appId) {
+        // 根据 appId 构建独立的对话记忆
+        ChatMemory chatMemory = buildChatMemory(appId);
         return AiServices.builder(AiCodeGeneratorService.class)
                 .chatModel(chatModel)
                 .streamingChatModel(openAiStreamingChatModel)
@@ -162,14 +182,7 @@ public class AiCodeGeneratorServiceFactory {
      */
     private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
         // 根据 appId 构建独立的对话记忆
-        MessageWindowChatMemory chatMemory = MessageWindowChatMemory
-                .builder()
-                .id(appId)
-                .chatMemoryStore(redisChatMemoryStore)
-                .maxMessages(20)
-                .build();
-        // 从数据库加载历史对话到记忆中
-        chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
+        ChatMemory chatMemory = buildChatMemory(appId);
         // 根据代码生成类型选择不同的模型配置
         return switch (codeGenType) {
             // Vue 项目生成使用推理模型

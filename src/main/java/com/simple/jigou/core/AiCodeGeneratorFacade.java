@@ -100,7 +100,7 @@ public class AiCodeGeneratorFacade {
             }
             case VUE_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
-                yield processTokenStream(tokenStream, appId);
+                yield processTokenStream(tokenStream, appId, CodeGenTypeEnum.VUE_PROJECT);
             }
             default -> {
                 String errorMessage = "不支持的生成类型：" + codeGenTypeEnum.getValue();
@@ -213,10 +213,12 @@ public class AiCodeGeneratorFacade {
     /**
      * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
      *
-     * @param tokenStream TokenStream 对象
+     * @param tokenStream  TokenStream 对象
+     * @param appId        应用 id
+     * @param codeGenType  代码生成类型
      * @return Flux<String> 流式响应
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId) {
+    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId, CodeGenTypeEnum codeGenType) {
         return Flux.create(sink -> {
             tokenStream.onPartialResponse((String partialResponse) -> {
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
@@ -240,7 +242,10 @@ public class AiCodeGeneratorFacade {
                         sink.complete();
                     })
                     .onError((Throwable error) -> {
-                        error.printStackTrace();
+                        log.error("[appId: {}] AI 流式生成失败，已中断本次生成", appId, error);
+                        // 生成过程中断，会话记忆可能残留「有工具调用无工具结果」的非法序列，
+                        // 失效 AI 服务实例缓存，下次请求会重建服务并从数据库历史重新加载记忆
+                        aiCodeGeneratorServiceFactory.invalidate(appId, codeGenType);
                         sink.error(error);
                     })
                     .start();
