@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/request'
+import { isVueProject } from '@/constants/app'
 
 /**
  * 应用预览地址（浏览 AI 生成的网站效果）
@@ -7,7 +8,12 @@ import { API_BASE_URL } from '@/request'
  * 代码生成根目录下的同名目录，并默认返回该目录下的 index.html
  */
 export const getPreviewUrl = (codeGenType?: string, appId?: string | number) => {
-  return `${API_BASE_URL}/static/${codeGenType ?? ''}_${appId ?? ''}/`
+  const baseUrl = `${API_BASE_URL}/static/${codeGenType ?? ''}_${appId ?? ''}/`
+  // 如果是 Vue 项目，浏览地址需要添加 dist 后缀
+  if (isVueProject(codeGenType)) {
+    return `${baseUrl}dist/index.html`
+  }
+  return baseUrl
 }
 
 /**

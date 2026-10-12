@@ -1,17 +1,25 @@
 /**
  * 应用（app）相关常量，取值与后端 CodeGenTypeEnum / AppConstant 保持一致
  */
+/** 代码生成类型取值（对应后端 CodeGenTypeEnum） */
+export const CODE_GEN_TYPE = {
+  HTML: 'html',
+  MULTI_FILE: 'multi_file',
+  VUE_PROJECT: 'vue_project',
+} as const
 
-/** 代码生成类型选项（对应后端 CodeGenTypeEnum） */
+/** 代码生成类型选项（对应后端 CodeGenTypeEnum） 用于条件筛选*/
 export const CODE_GEN_TYPE_OPTIONS = [
   { label: '原生 HTML', value: 'html' },
   { label: '原生多文件', value: 'multi_file' },
+  { label: 'Vue 工程模式', value: 'vue_project' },
 ]
 
 /** 代码生成类型 value -> 展示文案 */
 export const CODE_GEN_TYPE_LABEL: Record<string, string> = {
   html: '原生 HTML',
   multi_file: '原生多文件',
+  vue_project: 'Vue 工程模式',
 }
 /** 普通应用优先级（未上精选），对应后端 AppConstant.DEFAULT_APP_PRIORITY */
 export const DEFAULT_APP_PRIORITY = 0
@@ -32,6 +40,7 @@ export const DEFAULT_APP_PAGE_SIZE = 12
 export const CODE_GEN_TYPE_TAG_COLOR: Record<string, string> = {
   html: 'orange',
   multi_file: 'blue',
+  vue_project: 'purple',
 }
 
 /**
@@ -98,3 +107,6 @@ export const getToggledVisibility = (visibility?: string) =>
 
 /** 可见范围切换按钮的悬浮提示文案 */
 export const VISIBILITY_SWITCH_TIP = '点击切换可见范围（私有 / 公开）'
+
+/** 判断项目生成类型是否是vue project**/
+export const isVueProject = (codeGenType?: string) => codeGenType === CODE_GEN_TYPE.VUE_PROJECT
