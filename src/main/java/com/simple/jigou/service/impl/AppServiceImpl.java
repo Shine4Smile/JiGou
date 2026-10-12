@@ -12,6 +12,7 @@ import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
 import com.simple.jigou.core.AppStorageManager;
+import com.simple.jigou.core.builder.VueProjectBuilder;
 import com.simple.jigou.core.handler.StreamHandlerExecutor;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
@@ -69,6 +70,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
+
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
     /**
      * 创建应用
@@ -145,12 +149,25 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             }
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
         }
-        // 5. 复用已有的 deployKey，没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
+        // 5. Vue 项目特殊处理：执行构建
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            // Vue 项目需要构建
+            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDir.getPath());
+            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请检查代码和依赖");
+            // 检查 dist 目录是否存在
+            File distDir = new File(sourceDir.getPath(), "dist");
+            ThrowUtils.throwIf(!distDir.exists(), ErrorCode.SYSTEM_ERROR, "Vue 项目构建完成但未生成 dist 目录");
+            // 将 dist 目录作为部署源
+            sourceDir = distDir;
+            log.info("Vue 项目构建成功，将部署 dist 目录: {}", distDir.getAbsolutePath());
+        }
+        // 6. 复用已有的 deployKey，没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
         String deployKey = app.getDeployKey();
         if (StrUtil.isBlank(deployKey)) {
             deployKey = RandomUtil.randomString(6);
         }
-        // 6. 部署前先清空部署目录，再复制最新内容
+        // 7. 部署前先清空部署目录，再复制最新内容
         File deployDir = FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey);
         FileUtil.del(deployDir);
         try {
@@ -159,10 +176,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             log.error("部署应用失败，appId = {}，部署目录 = {}", appId, deployDir.getAbsolutePath(), e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
         }
-        // 7. 更新应用的部署信息：部署工作区代码时 deployedVersion 置空，表示线上内容跟随工作区
+        // 8. 更新应用的部署信息：部署工作区代码时 deployedVersion 置空，表示线上内容跟随工作区
         updateDeployInfo(appId, deployKey, version);
         log.info("部署应用成功，appId = {}，部署标识 = {}，部署来源版本 = {}", appId, deployKey, version);
-        // 8. 返回可访问的 URL
+        // 9. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
     }
 
