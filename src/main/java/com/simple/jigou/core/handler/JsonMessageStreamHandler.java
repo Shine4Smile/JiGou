@@ -87,13 +87,9 @@ public class JsonMessageStreamHandler {
                 String toolId = toolRequestMessage.getId();
                 // 检查是否是第一次看到这个工具 ID
                 if (toolId != null && !seenToolIds.contains(toolId)) {
-                    // 第一次调用这个工具，记录 ID 并返回工具信息
+                    // 第一次调用这个工具，记录 ID 并完整返回工具信息
                     seenToolIds.add(toolId);
-                    String output = "\n\n[选择工具] 写入文件\n\n";
-                    // 同样写入历史：刷新页面后重新渲染这条 AI 消息时也要展示这一步，
-                    // 与「[工具调用]」保持一致，避免出现「刚生成看得到、刷新后消失」的展示不一致
-                    chatHistoryStringBuilder.append(output);
-                    return output;
+                    return "\n\n[选择工具] 写入文件\n\n";
                 } else {
                     // 不是第一次调用这个工具，直接返回空
                     return "";
