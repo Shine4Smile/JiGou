@@ -194,6 +194,7 @@
       :app-id="appId"
       :can-commit="isOwner"
       :deployed-version="app.deployedVersion"
+      :code-gen-type="app.codeGenType"
       @rolled-back="onRolledBack"
       @committed="onVersionCommitted"
     />
@@ -326,6 +327,7 @@ import {
   VISIBILITY_SWITCH_TIP,
   getToggledVisibility,
   getVisibilityTip,
+  isVueProject,
 } from '@/constants/app'
 import {
   CHAT_MESSAGE_TYPE,
@@ -335,7 +337,7 @@ import {
 import { asApiId } from '@/utils/apiId'
 import { formatDateTime } from '@/utils/time'
 import { switchAppVisibility } from '@/utils/appVisibility'
-import { getPreviewUrl, isPreviewAvailable } from '@/utils/appUrl'
+import { getPreviewUrl, isPreviewAvailable, waitPreviewReady } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
 
 /** 对话消息 */
@@ -916,12 +918,26 @@ const openPreviewInNewTab = () => {
 /**
  * 版本回退成功：工作区代码已被目标版本整体覆盖，刷新右侧预览并静默刷新应用信息
  *
+ * Vue 项目回退后工作区只剩源码，后端会异步重新安装依赖并构建，
+ * 因此先轮询等待构建产物就绪，避免 iframe 直接请求到不存在的页面
+ *
  * @param version 回退到的版本号
  */
 const onRolledBack = async (version: number) => {
   previewVisible.value = true
-  refreshPreview()
   await loadApp(true)
+  if (isVueProject(app.value.codeGenType)) {
+    const closeLoading = message.loading('已回退到该版本，正在重新安装依赖并构建，请稍候…', 0)
+    try {
+      const ready = await waitPreviewReady(previewUrl.value)
+      if (!ready) {
+        message.warning('构建耗时较长，稍后可点击「刷新预览」查看效果')
+      }
+    } finally {
+      closeLoading()
+    }
+  }
+  refreshPreview()
   message.info(`预览已刷新为 v${version} 的代码效果`)
 }
 

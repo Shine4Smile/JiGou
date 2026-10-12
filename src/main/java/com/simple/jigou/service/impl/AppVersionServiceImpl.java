@@ -3,10 +3,12 @@ package com.simple.jigou.service.impl;
 import cn.hutool.core.util.StrUtil;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AppStorageManager;
+import com.simple.jigou.core.builder.VueProjectBuilder;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.model.entity.App;
 import com.simple.jigou.model.entity.User;
+import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import com.simple.jigou.model.enums.UserRoleEnum;
 import com.simple.jigou.model.vo.AppVersionDetailVO;
 import com.simple.jigou.model.vo.AppVersionListVO;
@@ -38,6 +40,9 @@ public class AppVersionServiceImpl implements AppVersionService {
 
     @Resource
     private AppService appService;
+
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
     @Override
     public Integer commitVersion(Long appId, User loginUser) {
@@ -122,10 +127,18 @@ public class AppVersionServiceImpl implements AppVersionService {
     public boolean rollbackVersion(Long appId, Integer version, User loginUser) {
         App app = getOwnedApp(appId, loginUser);
         ThrowUtils.throwIf(version == null || version <= 0, ErrorCode.PARAMS_ERROR, "版本号不能为空");
-        // 1. 把指定版本的内容恢复到工作区（历史版本目录保持不可变）
-        AppStorageManager.restoreVersion(app.getCodeGenType(), appId, version);
+        String codeGenType = app.getCodeGenType();
+        // 1. 把指定版本的内容恢复到工作区（历史版本目录保持不可变，复制时忽略 node_modules、dist）
+        AppStorageManager.restoreVersion(codeGenType, appId, version);
         // 2. 应用当前版本号指向被回退的版本
         updateCurrentVersion(appId, version);
+        // 3. Vue 项目：回退后的工作区只有源码，异步重新安装依赖并构建，保证预览与部署能正常使用
+        if (CodeGenTypeEnum.VUE_PROJECT == CodeGenTypeEnum.getEnumByValue(codeGenType)) {
+            File workDir = AppStorageManager.getWorkDir(codeGenType, appId);
+            log.info("版本回退成功，开始重新安装依赖并构建，appId = {}，version = {}，workDir = {}",
+                    appId, version, workDir.getAbsolutePath());
+            vueProjectBuilder.buildProjectAsync(workDir.getPath());
+        }
         return true;
     }
 

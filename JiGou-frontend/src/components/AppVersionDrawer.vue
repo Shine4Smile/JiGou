@@ -103,7 +103,7 @@ import { CloudUploadOutlined, DiffOutlined } from '@ant-design/icons-vue'
 import { commitVersion, listVersions, rollbackVersion } from '@/api/appVersionController.ts'
 import AppVersionCodeModal from '@/components/AppVersionCodeModal.vue'
 import AppVersionDiffModal from '@/components/AppVersionDiffModal.vue'
-import { EMPTY_VERSION, MAX_VERSION_COUNT, WORKSPACE_VERSION } from '@/constants/app'
+import { EMPTY_VERSION, MAX_VERSION_COUNT, WORKSPACE_VERSION, isVueProject } from '@/constants/app'
 import { asApiId } from '@/utils/apiId'
 import { formatDateTime, formatRelativeTime } from '@/utils/time'
 
@@ -117,10 +117,13 @@ const props = withDefaults(
     canCommit?: boolean
     /** 线上正在部署的版本号（为空表示线上部署的是工作区最新代码） */
     deployedVersion?: number
+    /** 代码生成类型：Vue 项目回退后需要重新安装依赖并构建，用于给出等待提示 */
+    codeGenType?: string
   }>(),
   {
     canCommit: false,
     deployedVersion: 0,
+    codeGenType: '',
   },
 )
 
@@ -234,6 +237,15 @@ const doCommit = async () => {
   await submitCommit()
 }
 
+/** 回退确认的补充提示：Vue 项目回退后工作区只剩源码，需要重新安装依赖并构建 */
+const rollbackTip = computed(() => {
+  const base = '回退会用该版本的代码覆盖当前工作区，历史版本仍会保留，回退后可继续提交新版本。'
+  if (isVueProject(props.codeGenType)) {
+    return `${base}该应用是 Vue 项目，回退后会自动重新安装依赖并构建，需要等待一会儿预览才会更新。`
+  }
+  return base
+})
+
 /**
  * 回退到指定版本（二次确认）
  *
@@ -249,7 +261,7 @@ const doRollback = async (version?: number) => {
   }
   Modal.confirm({
     title: `确定回退到 v${version} 吗？`,
-    content: '回退会用该版本的代码覆盖当前工作区，历史版本仍会保留，回退后可继续提交新版本。',
+    content: rollbackTip.value,
     okText: '回退',
     okType: 'danger',
     cancelText: '取消',

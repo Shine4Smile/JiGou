@@ -149,38 +149,55 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             }
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
         }
-        // 5. Vue 项目特殊处理：执行构建
+        // 5. Vue 项目特殊处理：执行构建，拿到最终待部署的内容目录
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        File buildDir = null;
         if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            // 构建会在代码目录内写入 node_modules 与 dist，而版本目录是不可变的历史快照，
+            // 因此部署历史版本时先复制到临时构建目录再构建，避免构建产物污染版本库
+            File buildSourceDir = sourceDir;
+            if (version != null) {
+                buildDir = AppStorageManager.getBuildDir(codeGenType, appId);
+                FileUtil.del(buildDir);
+                AppStorageManager.copyCodeContent(sourceDir, buildDir);
+                buildSourceDir = buildDir;
+            }
             // Vue 项目需要构建
-            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDir.getPath());
+            boolean buildSuccess = vueProjectBuilder.buildProject(buildSourceDir.getPath());
             ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请检查代码和依赖");
             // 检查 dist 目录是否存在
-            File distDir = new File(sourceDir.getPath(), "dist");
+            File distDir = new File(buildSourceDir.getPath(), "dist");
             ThrowUtils.throwIf(!distDir.exists(), ErrorCode.SYSTEM_ERROR, "Vue 项目构建完成但未生成 dist 目录");
             // 将 dist 目录作为部署源
             sourceDir = distDir;
             log.info("Vue 项目构建成功，将部署 dist 目录: {}", distDir.getAbsolutePath());
         }
-        // 6. 复用已有的 deployKey，没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
-        String deployKey = app.getDeployKey();
-        if (StrUtil.isBlank(deployKey)) {
-            deployKey = RandomUtil.randomString(6);
-        }
-        // 7. 部署前先清空部署目录，再复制最新内容
-        File deployDir = FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey);
-        FileUtil.del(deployDir);
         try {
-            FileUtil.copyContent(sourceDir, deployDir, true);
-        } catch (Exception e) {
-            log.error("部署应用失败，appId = {}，部署目录 = {}", appId, deployDir.getAbsolutePath(), e);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
+            // 6. 复用已有的 deployKey，没有则生成 6 位 deployKey（大小写字母 + 数字），复杂场景还可考虑数据库查重逻辑
+            String deployKey = app.getDeployKey();
+            if (StrUtil.isBlank(deployKey)) {
+                deployKey = RandomUtil.randomString(6);
+            }
+            // 7. 部署前先清空部署目录，再复制最新内容
+            File deployDir = FileUtil.file(AppConstant.CODE_DEPLOY_ROOT_DIR, deployKey);
+            FileUtil.del(deployDir);
+            try {
+                FileUtil.copyContent(sourceDir, deployDir, true);
+            } catch (Exception e) {
+                log.error("部署应用失败，appId = {}，部署目录 = {}", appId, deployDir.getAbsolutePath(), e);
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
+            }
+            // 8. 更新应用的部署信息：部署工作区代码时 deployedVersion 置空，表示线上内容跟随工作区
+            updateDeployInfo(appId, deployKey, version);
+            log.info("部署应用成功，appId = {}，部署标识 = {}，部署来源版本 = {}", appId, deployKey, version);
+            // 9. 返回可访问的 URL
+            return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        } finally {
+            // 临时构建目录只在本次部署过程中使用，无论成功失败都立即清理，避免磁盘上堆积多份 node_modules
+            if (buildDir != null) {
+                FileUtil.del(buildDir);
+            }
         }
-        // 8. 更新应用的部署信息：部署工作区代码时 deployedVersion 置空，表示线上内容跟随工作区
-        updateDeployInfo(appId, deployKey, version);
-        log.info("部署应用成功，appId = {}，部署标识 = {}，部署来源版本 = {}", appId, deployKey, version);
-        // 9. 返回可访问的 URL
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
     }
 
     /**

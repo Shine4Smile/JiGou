@@ -11,8 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -47,6 +51,7 @@ import java.util.stream.Collectors;
  * tmp/code_versions/multi_file_1/v1、v2                            —— 历史版本快照
  * </pre>
  * 设计说明：工作区目录即原有代码目录，因此历史数据无需任何迁移，老应用天然表现为「从未提交过版本」。
+ * 版本快照与版本对比均忽略构建产物目录（node_modules、dist），避免依赖与构建结果被反复复制、上传与比对。
  *
  * @author simple
  */
@@ -82,6 +87,19 @@ public class AppStorageManager {
      * 替换工作区时使用的备份目录前缀（替换失败时用于回滚）
      */
     private static final String BACKUP_DIR_PREFIX = ".bak_";
+
+    /**
+     * 临时构建目录前缀（部署历史版本时先复制到该目录再构建，避免构建产物污染不可变的版本快照）
+     */
+    private static final String BUILD_DIR_PREFIX = ".build_";
+
+    /**
+     * 版本快照、版本对比时忽略的构建产物目录名（按目录名匹配，任意层级生效）
+     * <p>
+     * node_modules 为依赖安装产物、dist 为构建产物，二者都不属于用户代码，且体积大、每次构建都会变，
+     * 因此既不进入版本快照，也不参与版本对比与内容签名
+     */
+    private static final Set<String> IGNORED_DIR_NAMES = Set.of("node_modules", "dist");
 
     private AppStorageManager() {
     }
@@ -121,6 +139,20 @@ public class AppStorageManager {
     }
 
     /**
+     * 获取部署历史版本时使用的临时构建目录（与工作区同级）
+     * <p>
+     * 版本目录是不可变的历史快照，构建会在目录内写入 node_modules 与 dist，
+     * 因此部署历史版本时先把版本目录复制到该目录再构建，构建完成后立即删除
+     *
+     * @param codeGenType 代码生成类型
+     * @param appId       应用 id
+     * @return 临时构建目录
+     */
+    public static File getBuildDir(String codeGenType, Long appId) {
+        return FileUtil.file(WORK_ROOT_DIR, BUILD_DIR_PREFIX + getAppDirName(codeGenType, appId));
+    }
+
+    /**
      * 获取版本库根目录（某个应用全部版本目录的父目录）
      *
      * @param codeGenType 代码生成类型
@@ -147,7 +179,7 @@ public class AppStorageManager {
     }
 
     /**
-     * 判断工作区是否存在代码文件
+     * 判断工作区是否存在代码文件（忽略 node_modules、dist 等构建产物）
      *
      * @param codeGenType 代码生成类型
      * @param appId       应用 id
@@ -155,7 +187,7 @@ public class AppStorageManager {
      */
     public static boolean hasCode(String codeGenType, Long appId) {
         File workDir = getWorkDir(codeGenType, appId);
-        return workDir.exists() && !FileUtil.loopFiles(workDir).isEmpty();
+        return workDir.exists() && !loopCodeFiles(workDir).isEmpty();
     }
 
     /**
@@ -210,7 +242,7 @@ public class AppStorageManager {
             return null;
         }
         long lastModified = versionDir.lastModified();
-        for (File file : FileUtil.loopFiles(versionDir)) {
+        for (File file : loopCodeFiles(versionDir)) {
             lastModified = Math.max(lastModified, file.lastModified());
         }
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(lastModified), ZoneId.systemDefault());
@@ -220,7 +252,9 @@ public class AppStorageManager {
      * 读取目录下的全部代码文件内容（工作区目录与版本目录通用）
      * <p>
      * 与「版本对比」功能配套：版本目录用于已提交的历史版本快照，工作区目录用于当前未提交的最新代码，
-     * 目录不存在（如从未生成过代码）时返回空集合，调用方无需额外判空
+     * 目录不存在（如从未生成过代码）时返回空集合，调用方无需额外判空。
+     * <p>
+     * 构建产物目录（node_modules、dist）会被忽略，因此历史遗留版本快照中的依赖与构建结果也不会下发到前端
      *
      * @param dir 代码目录（工作区目录或版本目录）
      * @return 文件名（相对路径，统一使用 '/' 分隔）-> 文件内容
@@ -230,9 +264,7 @@ public class AppStorageManager {
         if (dir == null || !dir.exists()) {
             return fileMap;
         }
-        List<File> fileList = FileUtil.loopFiles(dir);
-        // 固定按绝对路径排序，保证同一份代码每次读取的文件顺序一致
-        fileList.sort(Comparator.comparing(File::getAbsolutePath));
+        List<File> fileList = loopCodeFiles(dir);
         Path rootPath = dir.toPath();
         for (File file : fileList) {
             String fileName = rootPath.relativize(file.toPath()).toString().replace('\\', '/');
@@ -261,7 +293,8 @@ public class AppStorageManager {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "版本目录已存在，请重试");
         }
         try {
-            FileUtil.copyContent(getWorkDir(codeGenType, appId), versionDir, true);
+            // 复制工作区代码到版本目录（忽略 node_modules、dist 等构建产物）
+            copyCodeContent(getWorkDir(codeGenType, appId), versionDir);
         } catch (Exception e) {
             // 复制失败时清理残缺的版本目录，避免产生「空版本」
             FileUtil.del(versionDir);
@@ -274,7 +307,13 @@ public class AppStorageManager {
     /**
      * 回退版本：把指定版本的代码恢复到工作区
      * <p>
-     * 只修改工作区内容，历史版本目录保持不可变；工作区原有内容会被该版本内容整体替换
+     * 只修改工作区内容，历史版本目录保持不可变；工作区原有内容（含依赖与构建产物）会被该版本内容整体替换。
+     * <p>
+     * 复制时同样忽略 node_modules、dist，因此：
+     * <ul>
+     *     <li>历史遗留版本快照中的依赖不会重新写回工作区</li>
+     *     <li>回退后的工作区只有源码，Vue 项目需要由调用方重新安装依赖并构建后才能预览</li>
+     * </ul>
      *
      * @param codeGenType 代码生成类型
      * @param appId       应用 id
@@ -289,7 +328,7 @@ public class AppStorageManager {
         File tempDir = getTempDir(codeGenType, appId);
         FileUtil.del(tempDir);
         try {
-            FileUtil.copyContent(versionDir, tempDir, true);
+            copyCodeContent(versionDir, tempDir);
         } catch (Exception e) {
             FileUtil.del(tempDir);
             log.error("回退版本失败，appId = {}，version = {}", appId, version, e);
@@ -318,11 +357,12 @@ public class AppStorageManager {
     public static boolean deleteWorkDir(String codeGenType, Long appId) {
         File workDir = getWorkDir(codeGenType, appId);
         File parentDir = workDir.getParentFile();
-        // 临时目录与备份目录由「写入代码」「替换工作区」流程产生，正常流程结束时会自动清理，
-        // 这里兜底清理，避免流程异常中断时残留的目录随应用一起变成垃圾数据
+        // 临时目录、备份目录由「写入代码」「替换工作区」「回退版本」流程产生，构建目录由「部署历史版本」流程产生，
+        // 正常流程结束时会自动清理，这里兜底清理，避免流程异常中断时残留的目录随应用一起变成垃圾数据
         return FileUtil.del(workDir)
                 & FileUtil.del(FileUtil.file(parentDir, TEMP_DIR_PREFIX + workDir.getName()))
-                & FileUtil.del(FileUtil.file(parentDir, BACKUP_DIR_PREFIX + workDir.getName()));
+                & FileUtil.del(FileUtil.file(parentDir, BACKUP_DIR_PREFIX + workDir.getName()))
+                & FileUtil.del(FileUtil.file(parentDir, BUILD_DIR_PREFIX + workDir.getName()));
     }
 
     /**
@@ -396,7 +436,7 @@ public class AppStorageManager {
         }
         if (baseVersion == null || baseVersion <= 0) {
             // 从未提交过版本，工作区有代码即视为存在未提交内容
-            return !FileUtil.loopFiles(workDir).isEmpty();
+            return !loopCodeFiles(workDir).isEmpty();
         }
         File versionDir = getVersionDir(codeGenType, appId, baseVersion);
         if (!versionDir.exists()) {
@@ -455,14 +495,101 @@ public class AppStorageManager {
     }
 
     /**
+     * 遍历目录下的代码文件（忽略构建产物目录）
+     * <p>
+     * 与 Hutool 的 FileUtil.loopFiles 的关键区别：遇到忽略目录时直接跳过整棵子树，
+     * 而不是先递归进去再过滤文件，因此不会因为 node_modules 里有成千上万个文件而变慢；
+     * 读取、比对、内容签名三处共用本方法，保证口径完全一致
+     *
+     * @param root 代码目录
+     * @return 代码文件列表（固定按绝对路径升序，保证同一份代码每次读取顺序一致）
+     */
+    private static List<File> loopCodeFiles(File root) {
+        List<File> fileList = new ArrayList<>();
+        if (root == null || !root.exists()) {
+            return fileList;
+        }
+        Path rootPath = root.toPath();
+        try {
+            Files.walkFileTree(rootPath, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    return isIgnoredDir(rootPath, dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    fileList.add(file.toFile());
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "读取代码目录失败：" + e.getMessage());
+        }
+        fileList.sort(Comparator.comparing(File::getAbsolutePath));
+        return fileList;
+    }
+
+    /**
+     * 复制代码内容（忽略构建产物目录），用于提交版本与回退版本
+     * <p>
+     * 语义与 Hutool 的 FileUtil.copyContent(src, dest, true) 一致：只把 src 的子内容复制到 dest，
+     * 但会跳过 node_modules、dist，避免版本快照体积暴涨、回退时把旧依赖重新写回工作区
+     *
+     * @param src  源目录
+     * @param dest 目标目录（不存在时自动创建）
+     */
+    public static void copyCodeContent(File src, File dest) {
+        if (src == null || !src.exists()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "代码目录不存在");
+        }
+        Path srcPath = src.toPath();
+        Path destPath = dest.toPath();
+        try {
+            Files.walkFileTree(srcPath, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    if (isIgnoredDir(srcPath, dir)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    Files.createDirectories(destPath.resolve(srcPath.relativize(dir)));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    // 保留文件属性（时间戳等），与原有的复制行为保持一致
+                    Files.copy(file, destPath.resolve(srcPath.relativize(file)),
+                            StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "复制代码目录失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 判断目录是否需要忽略（按目录名匹配，任意层级生效，根目录本身不参与判断）
+     *
+     * @param root 遍历的根目录
+     * @param dir  当前目录
+     * @return 是否需要忽略该目录及其子树
+     */
+    private static boolean isIgnoredDir(Path root, Path dir) {
+        Path fileName = dir.getFileName();
+        return fileName != null && !dir.equals(root) && IGNORED_DIR_NAMES.contains(fileName.toString());
+    }
+
+    /**
      * 计算目录内容摘要（文件名 + 文件内容的 MD5），用于判断工作区与某个版本的内容是否一致
      *
      * @param dir 目录
      * @return 内容摘要
      */
     private static String contentSignature(File dir) {
-        List<File> fileList = FileUtil.loopFiles(dir);
-        fileList.sort(Comparator.comparing(File::getAbsolutePath));
+        // 与 readCodeFiles 使用同一套遍历规则（忽略构建产物），避免「刚提交完仍显示有未提交修改」
+        List<File> fileList = loopCodeFiles(dir);
         Path rootPath = dir.toPath();
         StringBuilder builder = new StringBuilder();
         for (File file : fileList) {
