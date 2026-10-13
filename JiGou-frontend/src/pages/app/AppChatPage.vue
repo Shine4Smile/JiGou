@@ -77,6 +77,13 @@
           <template #icon><CloudSyncOutlined /></template>
           <span>取消部署</span>
         </a-button>
+        <!-- 下载代码：把工作区代码打包成 ZIP 下载（仅创建者，与后端权限校验一致） -->
+        <a-tooltip :title="downloadTip">
+          <a-button :disabled="!isOwner" :loading="downloading" @click="doDownloadCode">
+            <template #icon><DownloadOutlined /></template>
+            <span>下载代码</span>
+          </a-button>
+        </a-tooltip>
         <!-- 部署：先在选择弹窗中确定部署来源（工作区最新代码 / 指定历史版本） -->
         <a-tooltip :title="isOwner ? '' : '仅应用创建者可以部署该应用'">
           <a-button
@@ -301,6 +308,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DownOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   GlobalOutlined,
@@ -339,6 +347,7 @@ import { formatDateTime } from '@/utils/time'
 import { switchAppVisibility } from '@/utils/appVisibility'
 import { getPreviewUrl, isPreviewAvailable, waitPreviewReady } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
+import { downloadAppCodeZip } from '@/utils/appDownload'
 
 /** 对话消息 */
 type ChatMessage = {
@@ -370,6 +379,8 @@ const inputMessage = ref('')
 /** 是否有请求正在流式输出 */
 const streaming = ref(false)
 const deploying = ref(false)
+/** 下载代码请求进行中 */
+const downloading = ref(false)
 /** 预览区是否展示（流式接口全部返回后展示） */
 const previewVisible = ref(false)
 /** 预览刷新标记，用于强制 iframe 重新加载 */
@@ -467,6 +478,14 @@ const previewUrl = computed(() => getPreviewUrl(app.value.codeGenType, appId))
 /** 追加时间戳参数，避免浏览器复用缓存的旧页面 */
 const previewSrc = computed(() => `${previewUrl.value}?t=${previewKey.value}`)
 const canSend = computed(() => isOwner.value && !streaming.value && !!inputMessage.value.trim())
+
+/** 「下载代码」按钮的悬浮提示：非创建者不可下载；生成中下载会拿到不完整的代码 */
+const downloadTip = computed(() => {
+  if (!isOwner.value) {
+    return '仅应用创建者可以下载该应用代码'
+  }
+  return streaming.value ? '代码生成中，请等待生成完成后再下载' : ''
+})
 
 /* ------------------------------ 滚动 ------------------------------ */
 
@@ -759,6 +778,45 @@ const onPressEnter = (e: KeyboardEvent) => {
   }
   e.preventDefault()
   send()
+}
+
+/* ------------------------------ 下载代码 ------------------------------ */
+
+/**
+ * 下载应用代码
+ *
+ * 后端把工作区代码打包成 ZIP 返回，且仅允许应用创建者下载（与后端校验保持一致）；
+ * 尚未生成代码、应用不存在等场景后端返回业务错误，这里统一提示
+ */
+const doDownloadCode = async () => {
+  if (!isOwner.value) {
+    message.warning('仅应用创建者可以下载该应用代码')
+    return
+  }
+  if (streaming.value) {
+    message.warning('代码生成中，请等待生成完成后再下载')
+    return
+  }
+  if (downloading.value) {
+    return
+  }
+  downloading.value = true
+  try {
+    const { success, message: errorMessage, code } = await downloadAppCodeZip(appId)
+    if (success) {
+      message.success(`代码包「${errorMessage}」已开始下载`)
+      return
+    }
+    // 未登录：与流式生成保持一致，跳转登录页并回跳当前对话页
+    if (code === 40100) {
+      message.warning('请先登录')
+      router.push(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`)
+      return
+    }
+    message.error('下载代码失败：' + errorMessage)
+  } finally {
+    downloading.value = false
+  }
 }
 
 /* ------------------------------ 部署 ------------------------------ */
