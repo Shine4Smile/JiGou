@@ -130,6 +130,39 @@
 
         <!-- 用户消息输入框 -->
         <div class="chat-panel__input">
+          <!-- 可视化编辑选中的元素：作为下一次对话的上下文，关闭后同时取消预览页中的高亮 -->
+          <a-alert
+            v-if="selectedElementInfo"
+            class="chat-panel__element-alert"
+            type="info"
+            show-icon
+            closable
+            @close="clearSelectedElement"
+          >
+            <template #message>
+              <span class="element-info__title">
+                <span>已选中元素</span>
+                <code class="element-info__tag">{{ elementInfoLabel }}</code>
+              </span>
+            </template>
+            <template #description>
+              <div class="element-info">
+                <div v-if="selectedElementInfo.textContent" class="element-info__row">
+                  <span class="element-info__label">内容：</span>
+                  <span class="element-info__value">{{ selectedElementInfo.textContent }}</span>
+                </div>
+                <div v-if="selectedElementInfo.pagePath" class="element-info__row">
+                  <span class="element-info__label">页面路径：</span>
+                  <span class="element-info__value">{{ selectedElementInfo.pagePath }}</span>
+                </div>
+                <div class="element-info__row">
+                  <span class="element-info__label">选择器：</span>
+                  <code class="element-info__selector">{{ selectedElementInfo.selector }}</code>
+                </div>
+              </div>
+            </template>
+          </a-alert>
+
           <a-textarea
             v-model:value="inputMessage"
             class="chat-panel__textarea"
@@ -166,7 +199,25 @@
             <GlobalOutlined />
             <span>生成后的网页展示</span>
           </span>
+          <!-- 编辑模式提示：说明当前处于可视化编辑态及操作方式 -->
+          <span v-if="isEditMode" class="preview-panel__edit-tip">
+            <EditOutlined />
+            <span>悬浮查看元素，点击选中</span>
+          </span>
           <a-space :size="8">
+            <!-- 可视化编辑：开启后可在预览中悬浮查看、点击选中元素（发送消息或刷新预览后自动退出） -->
+            <a-tooltip :title="editModeTip">
+              <a-button
+                size="small"
+                :type="isEditMode ? 'primary' : 'default'"
+                :disabled="!canEditPreview"
+                :loading="editModeLoading"
+                @click="toggleVisualEdit"
+              >
+                <template #icon><EditOutlined /></template>
+                <span>{{ isEditMode ? '退出编辑' : '编辑模式' }}</span>
+              </a-button>
+            </a-tooltip>
             <a-button size="small" :disabled="!previewVisible" @click="refreshPreview">
               <template #icon><ReloadOutlined /></template>
               <span>刷新</span>
@@ -185,10 +236,12 @@
         <div class="preview-panel__body">
           <iframe
             v-if="previewVisible"
+            ref="previewIframeRef"
             :key="previewKey"
             class="preview-panel__iframe"
             :src="previewSrc"
             title="应用预览"
+            @load="onPreviewLoad"
           />
           <a-empty v-else description="网站生成完成后，将在这里展示效果" />
         </div>
@@ -348,6 +401,8 @@ import { switchAppVisibility } from '@/utils/appVisibility'
 import { getPreviewUrl, isPreviewAvailable, waitPreviewReady } from '@/utils/appUrl'
 import { AppChatStreamError, streamGenCode } from '@/utils/appChatStream'
 import { downloadAppCodeZip } from '@/utils/appDownload'
+import { VisualEditor, buildElementPrompt, formatElementLabel } from '@/utils/visualEditor'
+import type { ElementInfo } from '@/utils/visualEditor'
 
 /** 对话消息 */
 type ChatMessage = {
@@ -403,6 +458,30 @@ const detailOpen = ref(false)
 /** 版本管理抽屉是否打开 */
 const versionDrawerOpen = ref(false)
 const messageListRef = ref<HTMLElement>()
+/** 预览 iframe：可视化编辑需要拿到它才能注入编辑脚本（刷新预览会重建该元素） */
+const previewIframeRef = ref<HTMLIFrameElement>()
+/** 是否处于可视化编辑模式 */
+const isEditMode = ref(false)
+/** 编辑脚本注入中（开启编辑模式时需要重试等待预览文档就绪） */
+const editModeLoading = ref(false)
+/** 预览中选中的元素：发送消息时会作为上下文拼进提示词 */
+const selectedElementInfo = ref<ElementInfo | null>(null)
+
+/**
+ * 可视化编辑器
+ *
+ * 负责与预览 iframe 通信（注入编辑脚本、接收选中元素消息），
+ * 页面只需关心「选中了哪个元素」与「是否处于编辑模式」
+ */
+const visualEditor = new VisualEditor({
+  onElementSelected: (elementInfo) => {
+    selectedElementInfo.value = elementInfo
+  },
+  // 在预览页中按 ESC 退出编辑模式时，同步主站按钮状态
+  onEditModeChanged: (editMode) => {
+    isEditMode.value = editMode
+  },
+})
 
 /** 流式请求的取消控制器，用于「停止生成」与组件卸载 */
 let controller: AbortController | null = null
@@ -478,6 +557,30 @@ const previewUrl = computed(() => getPreviewUrl(app.value.codeGenType, appId))
 /** 追加时间戳参数，避免浏览器复用缓存的旧页面 */
 const previewSrc = computed(() => `${previewUrl.value}?t=${previewKey.value}`)
 const canSend = computed(() => isOwner.value && !streaming.value && !!inputMessage.value.trim())
+
+/** 是否可以开启可视化编辑：仅创建者、预览已展示且不在生成中（与按钮禁用状态保持一致） */
+const canEditPreview = computed(() => isOwner.value && previewVisible.value && !streaming.value)
+
+/** 选中元素的摘要（标签 + id + 最多两个 class），用于选中信息标题上的标识（与消息气泡复用同一套格式） */
+const elementInfoLabel = computed(() =>
+  selectedElementInfo.value ? formatElementLabel(selectedElementInfo.value) : '',
+)
+
+/** 「编辑模式」按钮的悬浮说明：按不可用的原因给出提示 */
+const editModeTip = computed(() => {
+  if (!isOwner.value) {
+    return '仅应用创建者可以编辑网页'
+  }
+  if (!previewVisible.value) {
+    return '网站生成完成后才能开启可视化编辑'
+  }
+  if (streaming.value) {
+    return '代码生成中，暂时无法开启可视化编辑'
+  }
+  return isEditMode.value
+    ? '退出编辑模式（已选中的元素会保留高亮）'
+    : '开启后可在预览页面中悬浮查看、点击选中元素'
+})
 
 /** 「下载代码」按钮的悬浮提示：非创建者不可下载；生成中下载会拿到不完整的代码 */
 const downloadTip = computed(() => {
@@ -700,11 +803,17 @@ const send = async (text?: string) => {
     return
   }
 
+  // 可视化编辑选中的元素作为本次修改的上下文，与用户输入一起发给后端
+  const elementInfo = selectedElementInfo.value
+  const prompt = elementInfo ? `${content}${buildElementPrompt(elementInfo)}` : content
+
   inputMessage.value = ''
+  // 发送后清空选中元素并退出编辑模式，避免残留状态影响后续对话
+  resetVisualEditor()
   messages.value.push({
     id: `u-${++messageSeed}`,
     role: 'user',
-    content,
+    content: prompt,
     time: new Date().toISOString(),
   })
   messages.value.push({
@@ -726,7 +835,7 @@ const send = async (text?: string) => {
   try {
     await streamGenCode({
       appId,
-      message: content,
+      message: prompt,
       signal: controller.signal,
       onChunk: (chunk) => {
         aiMessage.content += chunk
@@ -736,7 +845,8 @@ const send = async (text?: string) => {
     // 流式接口全部返回：结束光标、展示（刷新）右侧预览
     aiMessage.streaming = false
     previewVisible.value = true
-    previewKey.value += 1
+    // 生成完成：重建预览 iframe 展示最新效果（重建前会重置可视化编辑状态）
+    refreshPreview()
     // 生成过程可能更新了应用信息（如编辑时间），静默刷新一次
     await loadApp(true)
   } catch (error) {
@@ -961,9 +1071,78 @@ const copyDeployUrl = async () => {
   }
 }
 
+/* ------------------------------ 可视化编辑 ------------------------------ */
+
+/**
+ * 预览 iframe 加载完成
+ *
+ * 刷新预览 / 生成完成都会重建 iframe，因此需要重新绑定引用：
+ * - 编辑模式下重新注入编辑脚本，保证刷新后仍可继续选中元素；
+ * - 文档重建后旧的高亮已随之消失，同步清空主站记录的选中信息，避免把不存在的元素拼进提示词
+ */
+const onPreviewLoad = () => {
+  visualEditor.attach(previewIframeRef.value ?? null)
+  visualEditor.handleIframeLoad()
+  selectedElementInfo.value = null
+}
+
+/** 切换可视化编辑模式（开启时需要等待编辑脚本注入预览文档） */
+const toggleVisualEdit = async () => {
+  if (!isOwner.value) {
+    message.warning('仅应用创建者可以编辑网页')
+    return
+  }
+  if (!previewVisible.value) {
+    message.warning('网站生成完成后才能开启可视化编辑')
+    return
+  }
+  if (streaming.value) {
+    message.warning('代码生成中，请等待生成完成后再开启可视化编辑')
+    return
+  }
+  if (isEditMode.value) {
+    visualEditor.disableEditMode()
+    isEditMode.value = false
+    return
+  }
+  editModeLoading.value = true
+  try {
+    const enabled = await visualEditor.enableEditMode()
+    isEditMode.value = enabled
+    if (!enabled) {
+      message.warning(
+        '无法开启可视化编辑：预览页面与当前站点不同源或尚未加载完成，请刷新预览后重试',
+      )
+    }
+  } finally {
+    editModeLoading.value = false
+  }
+}
+
+/** 清除选中的元素（关闭选中信息时调用），同时取消预览页中的高亮 */
+const clearSelectedElement = () => {
+  if (!selectedElementInfo.value) {
+    return
+  }
+  selectedElementInfo.value = null
+  visualEditor.clearSelection()
+}
+
+/** 重置可视化编辑：清空选中元素并退出编辑模式（发送消息、重建预览时调用） */
+const resetVisualEditor = () => {
+  if (!selectedElementInfo.value && !isEditMode.value) {
+    return
+  }
+  selectedElementInfo.value = null
+  visualEditor.clearAllEffects()
+  isEditMode.value = false
+}
+
 /* ------------------------------ 预览 ------------------------------ */
 
 const refreshPreview = () => {
+  // 预览会被整体重建，旧的选中元素已不存在，先重置编辑状态
+  resetVisualEditor()
   previewKey.value += 1
 }
 
@@ -1068,6 +1247,8 @@ onBeforeUnmount(() => {
   // 离开页面时中断流式请求，避免请求悬挂
   controller?.abort()
   controller = null
+  // 释放预览页的编辑能力：移除消息监听并终止未完成的注入任务
+  visualEditor.dispose()
 })
 </script>
 
@@ -1215,6 +1396,58 @@ onBeforeUnmount(() => {
   color: #faad14;
 }
 
+/* 选中元素信息：展示在输入框上方，关闭后同时取消预览页中的高亮 */
+.chat-panel__element-alert {
+  margin-bottom: 10px;
+}
+
+.element-info__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.element-info__tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.element-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.element-info__row {
+  display: flex;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.element-info__label {
+  flex: none;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.element-info__value {
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.element-info__selector {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #d4380d;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .preview-panel__header {
   display: flex;
   align-items: center;
@@ -1232,6 +1465,16 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.88);
+}
+
+/* 预览区编辑模式提示：说明当前处于可视化编辑态与操作方式，紧贴右侧按钮组 */
+.preview-panel__edit-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  color: #1677ff;
 }
 
 .preview-panel__body {

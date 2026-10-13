@@ -4,8 +4,37 @@
     <img v-if="isAi" class="message__avatar" :src="siteConfig.logo" alt="AI" />
 
     <div class="message__bubble" :class="{ 'message__bubble--error': error }">
-      <!-- 用户消息：纯文本展示（用户输入不参与 markdown 渲染） -->
-      <template v-if="!isAi">{{ content }}</template>
+      <!-- 用户消息：纯文本展示（用户输入不参与 markdown 渲染）；可视化编辑选中的元素信息单独分区展示 -->
+      <template v-if="!isAi">
+        <div class="message__user-text">{{ userPrompt.content }}</div>
+
+        <!-- 选中元素信息：默认折叠成一行摘要，点击展开查看选择器等内容 -->
+        <div v-if="userPrompt.element" class="element-ref">
+          <div class="element-ref__head" @click="elementRefOpen = !elementRefOpen">
+            <span class="element-ref__title">引用元素</span>
+            <code class="element-ref__label">{{ elementLabel }}</code>
+            <span class="element-ref__toggle">
+              <span>{{ elementRefOpen ? '收起' : '展开' }}</span>
+              <UpOutlined v-if="elementRefOpen" />
+              <DownOutlined v-else />
+            </span>
+          </div>
+          <div v-if="elementRefOpen" class="element-ref__body">
+            <div v-if="userPrompt.element.textContent" class="element-ref__row">
+              <span class="element-ref__key">当前内容</span>
+              <span class="element-ref__value">{{ userPrompt.element.textContent }}</span>
+            </div>
+            <div v-if="userPrompt.element.pagePath" class="element-ref__row">
+              <span class="element-ref__key">页面路径</span>
+              <span class="element-ref__value">{{ userPrompt.element.pagePath }}</span>
+            </div>
+            <div class="element-ref__row">
+              <span class="element-ref__key">选择器</span>
+              <code class="element-ref__selector">{{ userPrompt.element.selector }}</code>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <template v-else>
         <!-- AI 生成失败：直接展示后端返回的错误原文，不做 markdown 渲染 -->
@@ -102,6 +131,7 @@ import {
   type MessageSegment,
 } from '@/utils/messageContent'
 import { formatRelativeTime } from '@/utils/time'
+import { formatElementLabel, parseElementPrompt } from '@/utils/visualEditor'
 
 const props = withDefaults(
   defineProps<{
@@ -124,6 +154,23 @@ const props = withDefaults(
 )
 
 const isAi = computed(() => props.role === 'ai')
+
+/**
+ * 用户消息内容：拆出「用户原话」与「选中元素信息」
+ *
+ * 可视化编辑发送的消息落库时是拼接文本（用户输入 + 元素信息），
+ * 历史消息与实时消息格式一致，因此统一在这里按协议还原成两段展示；
+ * 普通消息解析不到元素信息，展示与原来完全一致
+ */
+const userPrompt = computed(() => parseElementPrompt(props.content))
+
+/** 元素摘要标识（如 h1、button.primary），用于「引用元素」一行的标识 */
+const elementLabel = computed(() =>
+  userPrompt.value.element ? formatElementLabel(userPrompt.value.element) : '',
+)
+
+/** 「引用元素」详情是否展开（折叠状态属于当前消息组件，各条消息互不影响） */
+const elementRefOpen = ref(false)
 
 /** 按出现顺序切分的消息片段：文本段（markdown）+ 工具段（工具链进度）+ 代码段（文件卡片） */
 const segments = computed<MessageSegment[]>(() =>
@@ -232,6 +279,89 @@ const toggleFile = (segment: CodeMessageSegment) => {
   background: #f0f7ff;
   border-color: #d6e8ff;
   white-space: pre-wrap;
+}
+
+/* 用户消息正文：保留输入时的换行 */
+.message__user-text {
+  white-space: pre-wrap;
+}
+
+/* 选中元素信息：与用户提示词分区展示，默认折叠成一行摘要（避免长选择器撑开气泡） */
+.element-ref {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  /* 不继承气泡的 pre-wrap：卡片内部换行由行结构控制 */
+  white-space: normal;
+}
+
+.element-ref__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.element-ref__title {
+  flex: none;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.element-ref__label {
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  overflow-wrap: anywhere;
+}
+
+.element-ref__toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.element-ref__head:hover .element-ref__toggle {
+  color: #1677ff;
+}
+
+.element-ref__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(22, 119, 255, 0.18);
+}
+
+.element-ref__row {
+  display: flex;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.element-ref__key {
+  flex: none;
+  color: rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.element-ref__value {
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.element-ref__selector {
+  color: #d4380d;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  overflow-wrap: anywhere;
 }
 
 /* 纯文本展示（AI 失败原因），保留换行 */

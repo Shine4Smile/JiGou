@@ -3,9 +3,15 @@ import { message } from 'ant-design-vue'
 
 /**
  * 后端接口基础地址
- * 除 axios 请求外，SSE 流式对话、静态资源预览地址也需要复用该地址，故统一导出
+ *
+ * 使用相对路径 + 同域代理：
+ * - 开发环境由 vite.config.ts 的 server.proxy 把 /api 转发到后端；
+ * - 生产环境由 nginx 把 /api 与 /api/static 一起映射到后端。
+ *
+ * 这样做可以让接口请求、SSE 流式对话、静态资源预览地址（/api/static/...）与前端保持同源：
+ * 请求无需依赖跨域配置即可携带 Cookie，预览 iframe 也能被主站注入可视化编辑脚本。
  */
-export const API_BASE_URL = 'http://localhost:8181/api'
+export const API_BASE_URL = '/api'
 
 // 创建 Axios 实例
 const myAxios = axios.create({
