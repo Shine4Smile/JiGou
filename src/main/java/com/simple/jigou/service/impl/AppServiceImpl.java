@@ -31,6 +31,7 @@ import com.simple.jigou.model.vo.UserVO;
 import com.simple.jigou.service.AppService;
 import com.simple.jigou.service.ChatHistoryService;
 import com.simple.jigou.service.UserService;
+import com.simple.jigou.utils.WebScreenshotUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -191,7 +192,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             updateDeployInfo(appId, deployKey, version);
             log.info("部署应用成功，appId = {}，部署标识 = {}，部署来源版本 = {}", appId, deployKey, version);
             // 9. 返回可访问的 URL
-            return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+            String appDeployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+            // 10. 异步生成截图并更新应用封面
+            generateAppScreenshotAsync(appId, appDeployUrl);
+            return appDeployUrl;
         } finally {
             // 临时构建目录只在本次部署过程中使用，无论成功失败都立即清理，避免磁盘上堆积多份 node_modules
             if (buildDir != null) {
@@ -509,5 +513,59 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean isAdmin = UserRoleEnum.ADMIN.getValue().equals(loginUser.getUserRole());
         ThrowUtils.throwIf(!isAdmin && !loginUser.getId().equals(app.getUserId()),
                 ErrorCode.NO_AUTH_ERROR, "无权限查看该应用");
+    }
+
+    /**
+     * 异步生成应用截图并更新封面
+     * 当前方案暂将图片存储在本地，后续可以对接第三方存储服务，减轻本地存储压力
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    @Override
+    public void generateAppScreenshotAsync(Long appId, String appUrl) {
+        // 使用虚拟线程异步执行
+        Thread.startVirtualThread(() -> {
+            // 调用截图服务生成截图并上传
+            String screenshotUrl = WebScreenshotUtils.saveWebPageScreenshot(appUrl);
+            // 由于当前存储方案是存储在本地，利用nginx读取图片，所以将返回的图片本地路径转换为nginx访问链接
+            String convertToHttpUrl = convertToHttpUrl(screenshotUrl);
+            // 更新应用封面字段
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCover(convertToHttpUrl);
+            boolean updated = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        });
+    }
+
+    /**
+     * 将本地绝对路径转换为 HTTP 访问路径
+     * 例如：D:/project/.../tmp/screenshots/4ab36b54/1.jpg -> http://localhost/screenshots/4ab36b54/1.jpg
+     *
+     * @param localPath 原始本地路径
+     * @return HTTP 路径
+     */
+    private static String convertToHttpUrl(String localPath) {
+        if (localPath == null || localPath.trim().isEmpty()) {
+            return "";
+        }
+
+        // 1. 将 Windows 的反斜杠 \ 替换为正斜杠 / (兼容 Nginx 和 URL)
+        String normalizedPath = localPath.replace("\\", "/");
+
+        // 2. 截取 "screenshots/" 及其后面的内容
+        String keyword = "screenshots/";
+        int index = normalizedPath.indexOf(keyword);
+
+        if (index != -1) {
+            // 截取得到：screenshots/4ab36b54/67056_compressed.jpg
+            String relativePath = normalizedPath.substring(index);
+            // 拼接成 HTTP 地址
+            return "http://localhost/" + relativePath;
+        }
+
+        // 兜底：如果路径中没有 screenshots，原样返回或做其他处理
+        return normalizedPath;
     }
 }

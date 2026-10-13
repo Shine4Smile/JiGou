@@ -102,4 +102,12 @@ public interface AppService extends IService<App> {
      * @return 是否删除成功
      */
     boolean deleteApp(Long appId);
+
+    /**
+     * 生成网页截图，并更新数据库
+     *
+     * @param appId  应用id
+     * @param appUrl 应用访问url
+     */
+    void generateAppScreenshotAsync(Long appId, String appUrl);
 }
