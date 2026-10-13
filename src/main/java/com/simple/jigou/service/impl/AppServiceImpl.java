@@ -8,6 +8,7 @@ import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.simple.jigou.ai.AiCodeGenTypeRoutingService;
 import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
@@ -75,6 +76,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private VueProjectBuilder vueProjectBuilder;
 
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
     /**
      * 创建应用
      * 应用名称未填写时由 AI 根据初始需求生成，生成失败则兜底截取 initPrompt 的前 12 个字符
@@ -84,6 +88,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
      * @return 新应用 id
      */
     @Override
+
     public Long createApp(AppAddRequest appAddRequest, User loginUser) {
         // 1. 参数校验
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
@@ -99,15 +104,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         appName = StrUtil.blankToDefault(appName, StrUtil.sub(initPrompt, 0, AppConstant.DEFAULT_APP_NAME_MAX_LENGTH));
         // 4. 统一限制名称长度
         appName = StrUtil.sub(appName, 0, AppConstant.APP_NAME_MAX_LENGTH);
-        // 5. 构造入库对象
+        // 5. 使用AI智能选择应用生成类型
+        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(appAddRequest.getInitPrompt());
+        // 6. 构造入库对象
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setAppName(appName);
-        app.setCodeGenType(StrUtil.blankToDefault(appAddRequest.getCodeGenType(), CodeGenTypeEnum.VUE_PROJECT.getValue()));
+        app.setCodeGenType(codeGenTypeEnum.getValue());
         app.setUserId(loginUser.getId());
         // 可见范围默认私有，用户后续可在应用详情中自行切换为公开
         app.setVisibility(AppVisibilityEnum.PRIVATE.getValue());
-        // 6. 保存应用，名称与记录一起入库
+        // 7. 保存应用，名称与记录一起入库
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         log.info("创建应用成功，应用 id：{}，应用名称：{}", app.getId(), app.getAppName());

@@ -86,6 +86,18 @@
             <version>1.19.0-beta29</version>
         </dependency>
 
+        <!--
+            显式引入 langchain4j 的 JDK HttpClient 实现
+            该 starter 默认使用 Spring RestClient（底层是 Apache HttpClient 5，由 WebDriverManager 传递引入），
+            实测 Apache HttpClient 5 读取 DeepSeek 的分块响应时响应体会被截断成 1 个字节，
+            导致同步模型调用抛 JsonEOFException。引入该实现后配合 LangChain4jHttpClientConfig 替换默认客户端。
+        -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-http-client-jdk</artifactId>
+            <version>1.19.0</version>
+        </dependency>
+
         <!-- mybatis-flex -->
         <dependency>
             <groupId>com.mybatis-flex</groupId>
