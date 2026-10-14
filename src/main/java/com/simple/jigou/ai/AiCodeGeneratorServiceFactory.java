@@ -3,6 +3,9 @@ package com.simple.jigou.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.simple.jigou.ai.memory.ToolCallPairingChatMemory;
+import com.simple.jigou.ai.tools.FileDeleteTool;
+import com.simple.jigou.ai.tools.FileDirReadTool;
+import com.simple.jigou.ai.tools.FileModifyTool;
 import com.simple.jigou.ai.tools.FileWriteTool;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
@@ -116,7 +119,7 @@ public class AiCodeGeneratorServiceFactory {
      * 两种调用场景：
      * 1. 应用被删除：缓存中的实例持有该应用的会话记忆，继续保留既占用内存，语义上也已无归属
      * 2. 流式生成中断：会话记忆可能残留「有工具调用无工具结果」的非法序列，失效后下次请求会重建服务，
-     *    并从数据库历史重新加载记忆，让记忆回到干净状态
+     * 并从数据库历史重新加载记忆，让记忆回到干净状态
      *
      * @param appId       应用 id
      * @param codeGenType 代码生成类型
@@ -189,7 +192,12 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(
+                            new FileWriteTool(),
+                            new FileDirReadTool(),
+                            new FileModifyTool(),
+                            new FileDeleteTool()
+                    )
                     //幻觉工具名称名称策略，处理AI出现幻觉找不到工具的情况
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
