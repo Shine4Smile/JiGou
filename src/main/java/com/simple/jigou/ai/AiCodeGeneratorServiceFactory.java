@@ -3,10 +3,7 @@ package com.simple.jigou.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.simple.jigou.ai.memory.ToolCallPairingChatMemory;
-import com.simple.jigou.ai.tools.FileDeleteTool;
-import com.simple.jigou.ai.tools.FileDirReadTool;
-import com.simple.jigou.ai.tools.FileModifyTool;
-import com.simple.jigou.ai.tools.FileWriteTool;
+import com.simple.jigou.ai.tools.ToolManager;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
@@ -49,6 +46,9 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private ToolManager toolManager;
 
     /**
      * AI 服务实例缓存
@@ -192,12 +192,7 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(
-                            new FileWriteTool(),
-                            new FileDirReadTool(),
-                            new FileModifyTool(),
-                            new FileDeleteTool()
-                    )
+                    .tools(toolManager.getAllTools())
                     //幻觉工具名称名称策略，处理AI出现幻觉找不到工具的情况
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()

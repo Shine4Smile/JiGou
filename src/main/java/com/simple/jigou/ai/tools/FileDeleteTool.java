@@ -1,10 +1,12 @@
 package com.simple.jigou.ai.tools;
 
+import cn.hutool.json.JSONObject;
 import com.simple.jigou.constant.AppConstant;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +18,39 @@ import java.nio.file.Paths;
  * 支持 AI 通过工具调用的方式删除文件
  */
 @Slf4j
-public class FileDeleteTool {
+@Component
+public class FileDeleteTool extends BaseTool {
+    /**
+     * 获取工具的英文名称（对应方法名）
+     *
+     * @return 工具英文名称
+     */
+    @Override
+    public String getToolName() {
+        return "deleteFile";
+    }
+
+    /**
+     * 获取工具的中文显示名称
+     *
+     * @return 工具中文名称
+     */
+    @Override
+    public String getDisplayName() {
+        return "删除文件";
+    }
+
+    /**
+     * 生成工具执行结果格式（保存到数据库）
+     *
+     * @param arguments 工具执行参数
+     * @return 格式化的工具执行结果
+     */
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+        String relativeFilePath = arguments.getStr("relativeFilePath");
+        return String.format("[工具调用] %s %s", getDisplayName(), relativeFilePath);
+    }
 
     @Tool("删除指定路径的文件")
     public String deleteFile(
