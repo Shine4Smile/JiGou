@@ -261,6 +261,8 @@ const buildEditorScript = (basePath: string) => `(function () {
   var MAX_TEXT_LENGTH = ${MAX_TEXT_LENGTH};
   var MAX_SELECTOR_DEPTH = ${MAX_SELECTOR_DEPTH};
   var TIP_DURATION = ${TIP_DURATION};
+  // 主站刷新预览时追加的缓存击穿参数（AppChatPage 的 previewSrc 形如 ...?t=0），不属于页面自身路径
+  var PREVIEW_CACHE_KEY = 't';
 
   var editMode = true;
   var hoverElement = null;
@@ -356,7 +358,35 @@ const buildEditorScript = (basePath: string) => `(function () {
     return parts.join(' > ');
   }
 
-  /** 页面路径：相对预览根目录的路径（入口 index.html 省略）+ query + hash，便于多页面站点定位 */
+  /** query 中过滤掉主站追加的预览刷新参数，避免页面路径出现误导性的 ?t=0 */
+  function getSearchWithoutPreviewKey() {
+    var search = window.location.search || '';
+    if (!search) {
+      return '';
+    }
+    var pairs = search.slice(1).split('&');
+    var kept = [];
+    for (var i = 0; i < pairs.length; i += 1) {
+      if (pairs[i] && pairs[i].split('=')[0] !== PREVIEW_CACHE_KEY) {
+        kept.push(pairs[i]);
+      }
+    }
+    return kept.length ? '?' + kept.join('&') : '';
+  }
+
+  /**
+   * 页面 hash：hash 路由应用停留在默认路由时地址栏没有 hash，
+   * 此时页面内存在 router-link 渲染出的 a[href^="#/"]，据此补上 #/ 让首页同样有定位线索
+   */
+  function getPageHash() {
+    var hash = window.location.hash || '';
+    if (hash) {
+      return hash;
+    }
+    return document.querySelector('a[href^="#/"]') ? '#/' : '';
+  }
+
+  /** 页面路径：相对预览根目录的路径（入口 index.html 省略）+ query + hash，便于定位多页面站点与 hash 路由应用 */
   function getPagePath() {
     var pathname = window.location.pathname || '';
     var relative = BASE_PATH && pathname.indexOf(BASE_PATH) === 0
@@ -365,7 +395,7 @@ const buildEditorScript = (basePath: string) => `(function () {
     if (relative.length >= 10 && relative.slice(-10) === 'index.html') {
       relative = '';
     }
-    return relative + (window.location.search || '') + (window.location.hash || '');
+    return relative + getSearchWithoutPreviewKey() + getPageHash();
   }
 
   function getElementInfo(element) {
