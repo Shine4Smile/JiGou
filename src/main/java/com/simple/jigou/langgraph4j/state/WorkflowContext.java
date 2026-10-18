@@ -1,6 +1,7 @@
 package com.simple.jigou.langgraph4j.state;
 
 import com.simple.jigou.langgraph4j.model.ImageResource;
+import com.simple.jigou.langgraph4j.model.QualityResult;
 import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -72,7 +73,12 @@ public class WorkflowContext implements Serializable {
      */
     private String errorMessage;
 
+    /**
+     * 质量检查结果
+     */
+    private QualityResult qualityResult;
 
+    
     @Serial
     private static final long serialVersionUID = 1L;
 
