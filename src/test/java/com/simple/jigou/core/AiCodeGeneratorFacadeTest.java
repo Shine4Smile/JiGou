@@ -18,13 +18,13 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCode() {
-        File file = aiCodeGeneratorFacade.generateAndSaveCode("每日计划打卡网站", CodeGenTypeEnum.MULTI_FILE, 123L);
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("每日计划打卡网站", CodeGenTypeEnum.MULTI_FILE, System.currentTimeMillis());
         Assertions.assertNotNull(file);
     }
 
     @Test
     void generateAndSaveCodeStream() {
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("简单的测试网站，代码不超过30行", CodeGenTypeEnum.VUE_PROJECT, 1234L);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("每日计划打卡网站", CodeGenTypeEnum.MULTI_FILE, System.currentTimeMillis());
         // 阻塞等待所有数据收集完成
         List<String> result = codeStream.collectList().block();
         // 验证结果

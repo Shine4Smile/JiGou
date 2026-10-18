@@ -51,6 +51,19 @@ public class AiCodeGeneratorFacade {
     };
 
     /**
+     * 原生多文件流式生成的输出格式硬约束。（避免流式输出时仅生成一个html文件，参考非流式在用户信息后追加约束）
+     * 只补充系统提示词中距离模型最远、最容易失效的“输出格式”部分，
+     * 不重复角色、技术栈、文件职责等业务约束。
+     */
+    private static final String MULTI_FILE_STREAM_OUTPUT_CONTRACT = """
+            【输出格式硬约束（最高优先级，覆盖上文所有格式说明）】
+            1. 只输出恰好 3 个 Markdown 代码块，使用三个反引号围栏；语言标记依次为 html、css、javascript，每种标记恰好出现 1 次；标记后必须换行，围栏内第一行就是代码，不要写文件名；每个代码块必须有开始和结束围栏。
+            2. 三个代码块必须完整且非空：html 对应 index.html，css 对应 style.css，javascript 对应 script.js；空文件写一行注释占位；禁止在 HTML 中使用内联 <style> 或 <script>。
+            3. 写完 html 代码块后不要结束回答，必须继续输出 css 和 javascript；最后一个代码块必须是 javascript。代码块之间不要插入任何文字。
+            4. 可以在第一个代码块之前写一句开场白，但必须明确提到 index.html、style.css、script.js 三个文件；可以在 javascript 代码块结束后写一句简短总结。除此之外不要输出其他文字。结束前自检：html、css、javascript 是否各一个且都非空？缺少任何一个都视为保存失败，必须补齐后再结束。
+            """;
+
+    /**
      * 统一入口：根据类型生成并保存代码
      *
      * @param userMessage     用户提示词
@@ -95,7 +108,8 @@ public class AiCodeGeneratorFacade {
                 yield processCodeStream(codeStream, CodeGenTypeEnum.HTML, appId);
             }
             case MULTI_FILE -> {
-                Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
+                String msg = userMessage + "\n\n" + MULTI_FILE_STREAM_OUTPUT_CONTRACT.strip();
+                Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(msg);
                 yield processCodeStream(codeStream, CodeGenTypeEnum.MULTI_FILE, appId);
             }
             case VUE_PROJECT -> {
@@ -213,9 +227,9 @@ public class AiCodeGeneratorFacade {
     /**
      * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
      *
-     * @param tokenStream  TokenStream 对象
-     * @param appId        应用 id
-     * @param codeGenType  代码生成类型
+     * @param tokenStream TokenStream 对象
+     * @param appId       应用 id
+     * @param codeGenType 代码生成类型
      * @return Flux<String> 流式响应
      */
     private Flux<String> processTokenStream(TokenStream tokenStream, Long appId, CodeGenTypeEnum codeGenType) {
