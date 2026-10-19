@@ -9,6 +9,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.simple.jigou.ai.AiCodeGenTypeRoutingService;
+import com.simple.jigou.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
@@ -77,7 +78,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
 
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     /**
      * 创建应用
@@ -105,7 +106,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 4. 统一限制名称长度
         appName = StrUtil.sub(appName, 0, AppConstant.APP_NAME_MAX_LENGTH);
         // 5. 使用AI智能选择应用生成类型
-        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(appAddRequest.getInitPrompt());
+        // 使用 AI 智能选择代码生成类型（多例模式）
+        AiCodeGenTypeRoutingService routingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
+        CodeGenTypeEnum codeGenTypeEnum = routingService.routeCodeGenType(appAddRequest.getInitPrompt());
         // 6. 构造入库对象
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
