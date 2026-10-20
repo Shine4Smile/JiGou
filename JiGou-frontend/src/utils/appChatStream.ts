@@ -18,6 +18,12 @@ type SseFrame = {
 }
 
 /**
+ * 后端错误事件名
+ * error：流式生成中途失败；business-error：请求阶段的业务异常（限流、未登录等）
+ */
+const ERROR_EVENTS = new Set(['error', 'business-error'])
+
+/**
  * 解析单个 SSE 帧（形如 "event: done\ndata: {...}"）
  *
  * @param frame 帧文本
@@ -60,7 +66,8 @@ const parseChunk = (data: string) => {
 
 /**
  * 解析错误帧中的数据
- * 后端生成中途失败时以 SSE 的 error 事件返回，数据形如 {"message": "xxx", "code": 40100}
+ * 后端以 error 事件返回生成中途失败，以 business-error 事件返回请求阶段的业务异常，
+ * 数据均形如 {"message": "xxx", "code": 40100}
  *
  * @param data 帧中的 data 内容
  */
@@ -75,6 +82,25 @@ const parseErrorChunk = (data: string): { message?: string; code?: number } => {
     // 不是 JSON 时按纯文本处理，保证错误提示不丢
     return { message: data }
   }
+}
+
+/**
+ * 从 SSE 响应体中解析错误信息
+ * 用于 HTTP 状态非 2xx、但响应体仍是 SSE 帧的场景（全局异常处理器兜底）
+ *
+ * @param body 响应体文本
+ */
+const parseSseErrorBody = (body: string): AppChatStreamError => {
+  const frames = body.replace(/\r\n/g, '\n').split('\n\n')
+  for (const frameText of frames) {
+    const frame = parseFrame(frameText)
+    if (!ERROR_EVENTS.has(frame.event)) {
+      continue
+    }
+    const { message: errorMessage, code } = parseErrorChunk(frame.data)
+    return new AppChatStreamError(errorMessage || '生成失败，请稍后重试', code)
+  }
+  return new AppChatStreamError('生成失败，请稍后重试')
 }
 
 export type GenCodeStreamOptions = {
@@ -114,6 +140,12 @@ export const streamGenCode = async (options: GenCodeStreamOptions) => {
     signal,
   })
   if (!response.ok || !response.body) {
+    const contentType = response.headers.get('content-type') ?? ''
+    // 全局异常处理器会把业务异常写成 SSE 帧，此时不能再按 JSON 解析
+    if (contentType.includes('text/event-stream')) {
+      const errorBody = await response.text().catch(() => '')
+      throw parseSseErrorBody(errorBody)
+    }
     // 业务异常时后端会返回统一的 JSON 错误体
     const errorBody = await response.json().catch(() => undefined)
     throw new AppChatStreamError(
@@ -152,8 +184,9 @@ export const streamGenCode = async (options: GenCodeStreamOptions) => {
         finished = true
         break
       }
-      // 后端生成中途失败（模型报错、工具调用异常等），用 error 事件把失败原因传给前端
-      if (frame.event === 'error') {
+      // 后端生成中途失败（error）或请求阶段业务异常（business-error），
+      // 用错误事件把失败原因传给前端，避免被后续的 done 事件当成生成成功
+      if (ERROR_EVENTS.has(frame.event)) {
         const { message: errorMessage, code } = parseErrorChunk(frame.data)
         streamError = new AppChatStreamError(errorMessage || '生成失败，请稍后重试', code)
         finished = true

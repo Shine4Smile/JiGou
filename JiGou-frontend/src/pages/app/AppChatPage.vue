@@ -859,13 +859,16 @@ const send = async (text?: string) => {
       }
       return
     }
+    const errorMessage = err?.message || '生成失败，请稍后重试'
+    // 业务错误（如限流、未登录）直接展示在气泡中，避免用户误以为生成成功
+    aiMessage.content = `❌ ${errorMessage}`
     aiMessage.error = true
     if (err?.code === 40100) {
       message.warning('请先登录')
       router.push(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`)
       return
     }
-    message.error(err?.message || '生成失败，请稍后重试')
+    message.error(errorMessage)
   } finally {
     streaming.value = false
     controller = null
