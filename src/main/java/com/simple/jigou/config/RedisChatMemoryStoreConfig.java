@@ -47,6 +47,7 @@ public class RedisChatMemoryStoreConfig {
                 .port(port)
                 .password(password)
                 .ttl(ttl)
+                .prefix("chat:memory")
                 .build();
     }
 }
