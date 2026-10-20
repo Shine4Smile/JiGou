@@ -6,8 +6,6 @@ import cn.hutool.json.JSONUtil;
 import com.simple.jigou.ai.model.massage.*;
 import com.simple.jigou.ai.tools.BaseTool;
 import com.simple.jigou.ai.tools.ToolManager;
-import com.simple.jigou.constant.AppConstant;
-import com.simple.jigou.core.builder.VueProjectBuilder;
 import com.simple.jigou.model.entity.User;
 import com.simple.jigou.model.enums.ChatHistoryMessageTypeEnum;
 import com.simple.jigou.service.ChatHistoryService;
@@ -26,9 +24,6 @@ import java.util.Set;
 @Slf4j
 @Component
 public class JsonMessageStreamHandler {
-
-    @Resource
-    private VueProjectBuilder vueProjectBuilder;
 
     @Resource
     private ToolManager toolManager;
@@ -60,9 +55,6 @@ public class JsonMessageStreamHandler {
                     // 流式响应完成后，添加 AI 消息到对话历史
                     String aiResponse = chatHistoryStringBuilder.toString();
                     chatHistoryService.addChatMessage(appId, loginUser.getId(), aiResponse, ChatHistoryMessageTypeEnum.AI);
-                    // 异步构造Vue项目
-                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
-                    vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 .doOnError(error -> {
                     // AI 生成失败也要记录，但类型标记为 ERROR：前端按失败样式展示，加载会话记忆时也会跳过

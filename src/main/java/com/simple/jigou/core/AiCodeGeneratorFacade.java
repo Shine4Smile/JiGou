@@ -12,6 +12,7 @@ import com.simple.jigou.ai.model.massage.AiResponseMessage;
 import com.simple.jigou.ai.model.massage.ToolExecutedMessage;
 import com.simple.jigou.ai.model.massage.ToolRequestMessage;
 import com.simple.jigou.constant.AppConstant;
+import com.simple.jigou.core.builder.VueProjectBuilder;
 import com.simple.jigou.core.parser.CodeParserExecutor;
 import com.simple.jigou.core.saver.CodeFileSaverExecutor;
 import com.simple.jigou.exception.BusinessException;
@@ -42,6 +43,8 @@ public class AiCodeGeneratorFacade {
     @Resource
     private AiAppNameService aiAppNameService;
 
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
     /**
      * AI 偶尔会把名称用成对的符号包裹，此处按成对符号去掉一层
      */
@@ -253,6 +256,9 @@ public class AiCodeGeneratorFacade {
                         sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
                     })
                     .onCompleteResponse((ChatResponse response) -> {
+                        // 执行 Vue 项目构建（同步执行，确保预览时项目已就绪）
+                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + "vue_project_" + appId;
+                        vueProjectBuilder.buildProject(projectPath);
                         sink.complete();
                     })
                     .onError((Throwable error) -> {
