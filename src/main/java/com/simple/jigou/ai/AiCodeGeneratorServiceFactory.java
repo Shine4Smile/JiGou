@@ -2,6 +2,7 @@ package com.simple.jigou.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.simple.jigou.ai.guardrail.PromptSafetyInputGuardrail;
 import com.simple.jigou.ai.memory.ToolCallPairingChatMemory;
 import com.simple.jigou.ai.tools.ToolManager;
 import com.simple.jigou.exception.BusinessException;
@@ -195,6 +196,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools(toolManager.getAllTools())
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
                         //幻觉工具名称名称策略，处理AI出现幻觉找不到工具的情况
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
@@ -209,6 +211,7 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
                         .build();
             }
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR,
