@@ -832,16 +832,48 @@ const send = async (text?: string) => {
   streaming.value = true
   scheduleScrollToBottom()
   controller = new AbortController()
+
+  // 流式分片合并刷新：后端每秒可能推送几十个分片，逐个赋值会触发整页重渲染
+  const STREAM_RENDER_INTERVAL = 50
+  let pendingChunk = ''
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 把缓冲中的分片一次性提交到消息上 */
+  const flushChunk = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    if (!pendingChunk) {
+      return
+    }
+    aiMessage.content += pendingChunk
+    pendingChunk = ''
+    scheduleScrollToBottom()
+  }
+
+  /** 分片先入缓冲，最多每 STREAM_RENDER_INTERVAL 毫秒刷新一次 */
+  const queueChunk = (chunk: string) => {
+    pendingChunk += chunk
+    if (flushTimer) {
+      return
+    }
+    flushTimer = setTimeout(() => {
+      flushTimer = null
+      flushChunk()
+    }, STREAM_RENDER_INTERVAL)
+  }
+
   try {
-    await streamGenCode({
+    const finalContent = await streamGenCode({
       appId,
       message: prompt,
       signal: controller.signal,
-      onChunk: (chunk) => {
-        aiMessage.content += chunk
-        scheduleScrollToBottom()
-      },
+      onChunk: queueChunk,
     })
+    // 提交最后一批分片，并以接口返回的完整内容为准，确保合并刷新不会丢字
+    flushChunk()
+    aiMessage.content = finalContent
     // 流式接口全部返回：结束光标、展示（刷新）右侧预览
     aiMessage.streaming = false
     previewVisible.value = true
@@ -850,6 +882,8 @@ const send = async (text?: string) => {
     // 生成过程可能更新了应用信息（如编辑时间），静默刷新一次
     await loadApp(true)
   } catch (error) {
+    // 用户主动停止时保留最后一段已到达的内容
+    flushChunk()
     aiMessage.streaming = false
     const err = error as AppChatStreamError
     if (err?.name === 'AbortError') {
@@ -870,6 +904,11 @@ const send = async (text?: string) => {
     }
     message.error(errorMessage)
   } finally {
+    // 兜底清理：异常路径下不留下未执行的定时器
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
     streaming.value = false
     controller = null
     scheduleScrollToBottom()

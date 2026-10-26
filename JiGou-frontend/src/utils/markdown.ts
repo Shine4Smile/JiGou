@@ -47,7 +47,7 @@ const DOMPURIFY_CONFIG = {
 }
 
 /** 转义 HTML 特殊字符（无语言或语言未注册时按纯文本展示） */
-const escapeHtml = (text: string): string =>
+export const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /**

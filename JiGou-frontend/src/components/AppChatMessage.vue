@@ -81,7 +81,7 @@
               </div>
               <pre v-if="isFileExpanded(segment)" class="file-item__code"><code
                   class="hljs"
-                  v-html="renderCode(segment)"
+                  v-html="renderSegmentCode(segment)"
                 ></code></pre>
             </div>
           </template>
@@ -123,7 +123,7 @@ import {
   UpOutlined,
 } from '@ant-design/icons-vue'
 import { siteConfig } from '@/layouts/config'
-import { highlightCode, renderMarkdown } from '@/utils/markdown'
+import { escapeHtml, highlightCode, renderMarkdown } from '@/utils/markdown'
 import {
   countCodeSegments,
   splitMessageContent,
@@ -217,6 +217,19 @@ const renderCode = (segment: CodeMessageSegment): string => {
   }
   codeCache.set(cacheKey, html)
   return html
+}
+
+/**
+ * 代码段 -> 展示内容
+ *
+ * 流式中未闭合的代码块用纯文本渲染：每个分片都整段重新高亮会阻塞主线程，
+ * 文件越大越卡；闭合后或流结束后仍走原来的高亮渲染。
+ */
+const renderSegmentCode = (segment: CodeMessageSegment): string => {
+  if (segment.closed || !props.streaming) {
+    return renderCode(segment)
+  }
+  return escapeHtml(segment.code)
 }
 
 /**
