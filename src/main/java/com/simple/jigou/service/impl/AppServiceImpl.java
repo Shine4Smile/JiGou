@@ -30,6 +30,8 @@ import com.simple.jigou.model.enums.CodeGenTypeEnum;
 import com.simple.jigou.model.enums.UserRoleEnum;
 import com.simple.jigou.model.vo.AppVO;
 import com.simple.jigou.model.vo.UserVO;
+import com.simple.jigou.monitor.MonitorContext;
+import com.simple.jigou.monitor.MonitorContextHolder;
 import com.simple.jigou.service.AppService;
 import com.simple.jigou.service.ChatHistoryService;
 import com.simple.jigou.service.UserService;
@@ -320,10 +322,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Long userId = loginUser.getId();
         boolean saved = chatHistoryService.addChatMessage(appId, userId, message, ChatHistoryMessageTypeEnum.USER);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "保存用户消息失败");
-        // 6. 调用 AI 生成代码（流式）
+        // 6. 设置监控上下文
+        MonitorContextHolder.setContext(
+                MonitorContext.builder()
+                        .userId(loginUser.getId().toString())
+                        .appId(appId.toString())
+                        .build()
+        );
+        // 7. 调用 AI 生成代码（流式）
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        // 8. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum)
+                .doFinally(aVoid -> MonitorContextHolder.clearContext());
     }
 
     /**
