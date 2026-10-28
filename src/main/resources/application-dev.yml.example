@@ -1,0 +1,79 @@
+# ============================================================
+# JiGou 本地开发环境配置模板（application-dev.yml）
+#
+# 使用方式：
+#   Windows    : copy src\main\resources\application-dev.yml.example src\main\resources\application-dev.yml
+#   macOS/Linux: cp src/main/resources/application-dev.yml.example src/main/resources/application-dev.yml
+#
+# 说明：
+#   1. application-dev.yml 已在 .gitignore 中，属于本地私有配置，不会被提交；
+#   2. 本文件中的 <your-xxx> 均为占位符，请替换为自己的真实值后再启动项目；
+#   3. 未替换密钥时项目仍可正常启动，但调用 AI 对话、图片搜索、Logo 生成时会返回鉴权错误。
+# ============================================================
+spring:
+  # MySQL 数据源（数据库初始化脚本见 sql/create_table.sql）
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/jigou
+    username: <your-mysql-username>
+    password: <your-mysql-password>
+  # Redis（本地缓存、分布式锁、Spring Session、AI 对话记忆）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # 没有设置密码时留空即可
+      password:
+      # 过期时间，非超时时间，避免消息多导致redis内存占满
+      ttl: 3600
+      database: 0
+
+# Pexels 图片搜索配置（免费申请：https://www.pexels.com/api/）
+pexels:
+  api-key: <your-pexels-api-key>
+
+
+# AI 模型配置（统一使用 OpenAI 兼容协议，模板默认对接 DeepSeek：https://platform.deepseek.com/）
+langchain4j:
+  open-ai:
+    # 同步模型：生成应用名称、代码生成类型智能路由
+    chat-model:
+      base-url: https://api.deepseek.com
+      api-key: <your-deepseek-api-key>
+      model-name: deepseek-chat
+      log-requests: true
+      log-responses: true
+      # 设置输出长度，避免AI生成的json被截断
+      max-tokens: 8192
+      # 确保严格格式化输出
+    #      strict-json-schema: true
+    #      response-format: json_object
+    # 流式模型：应用对话生成代码（业务主链路，SSE 流式输出）
+    streaming-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: <your-deepseek-api-key>
+      model-name: deepseek-chat
+      timeout: 5m
+      max-tokens: 32768
+      log-requests: true
+      log-responses: true
+    # 推理 AI 模型配置（用于复杂的推理任务）
+    reasoning-streaming-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: <your-deepseek-api-key>
+      model-name: deepseek-reasoner
+      max-tokens: 32768
+      temperature: 0.1
+      log-requests: true
+      log-responses: true
+    # 智能路由 AI 模型配置（用于简单的分类任务）
+    routing-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: <your-deepseek-api-key>
+      model-name: deepseek-chat
+      log-requests: true
+      log-responses: true
+# 阿里云 DashScope 配置（用于 AI 生成 Logo，控制台：https://bailian.console.aliyun.com/）
+dashscope:
+  api-key: <your-dashscope-api-key>
+  image-model: wan2.2-t2i-flash
