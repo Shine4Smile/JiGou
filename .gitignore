@@ -1,11 +1,20 @@
 # 编译产生的class文件（必须忽略）
 *.class
 
-# 依赖包文件夹（必须忽略）
-/target/
-/out/
-/build/
-/tmp/
+# 依赖包文件夹（所有层级，微服务模块同样生效）
+target/
+out/
+build/
+tmp/
+logs/
+node_modules/
+dist/
+
+# 打包产物（Maven Wrapper 的 jar 需要时用 ! 例外放行）
+*.jar
+*.war
+*.ear
+!**/.mvn/wrapper/maven-wrapper.jar
 
 # IDE配置文件（忽略你本地的个性化设置）
 .idea/
@@ -19,7 +28,6 @@
 
 # 日志文件（必须忽略）
 *.log
-logs/
 
 # 操作系统生成的垃圾文件（必须忽略）
 .DS_Store
@@ -27,14 +35,44 @@ Thumbs.db
 
 # 本地环境配置（非常重要，避免把数据库密码传上去）
 application-local.yml
+application-local.yaml
 application-dev.yml
 application-prod.yml
 .env
+.env.*.local
 *.pem
 *.key
+*.p12
 
-# Maven/Gradle 本地缓存（通常忽略）
+# Maven 构建辅助文件
+.flattened-pom.xml
+dependency-reduced-pom.xml
+*.versionsBackup
+
+# Maven/Gradle 本地缓存
+# 注意：如果要提交 Maven Wrapper，请删除下面三行（推荐提交）
 .mvn/
 mvnw
 mvnw.cmd
 .gradle/
+
+# JVM 崩溃日志与堆转储
+*.hprof
+hs_err_pid*
+replay_pid*
+*.pid
+
+# 临时与备份文件
+*.tmp
+*.bak
+*.orig
+*.rej
+*~
+
+# 编辑器历史与交换文件
+.history/
+*.swp
+*.swo
+
+# Windows 系统文件
+desktop.ini
