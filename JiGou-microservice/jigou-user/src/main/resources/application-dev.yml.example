@@ -1,0 +1,22 @@
+spring:
+  # mysql
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/jigou
+    username: <your username>
+    password: <your password>
+  # redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      password:
+
+# Dubbo 注册中心（含账号密码，属于本地私有配置）
+dubbo:
+  registry:
+    address: nacos://127.0.0.1:8848?username=<your username>&password=<your password>
+    register-mode: instance # 保持你原有的应用级服务发现配置
+    parameters:
+      register-consumer-url: "true" # 开启消费者 URL 注册，消除日志黄色提示，方便排查

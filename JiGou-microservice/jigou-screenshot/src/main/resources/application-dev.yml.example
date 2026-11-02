@@ -1,0 +1,15 @@
+# 添加 COS 对象存储配置（需要从腾讯云获取）
+cos:
+  client:
+    host: your-custom-domain.com
+    secretId: your-secret-id
+    secretKey: your-secret-key
+    region: your-region
+    bucket: your-bucket-name
+# Dubbo 注册中心（含账号密码，属于本地私有配置）
+dubbo:
+  registry:
+    address: nacos://127.0.0.1:8848?username=<your username>&password=<your password>
+    register-mode: instance # 保持你原有的应用级服务发现配置
+    parameters:
+      register-consumer-url: "true" # 开启消费者 URL 注册，消除日志黄色提示，方便排查

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.simple</groupId>
+        <artifactId>JiGou-microservice</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jigou-common</artifactId>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!--
+          腾讯云 COS 对象存储 (Bundle 版)
+          说明：Bundle 版将 COS SDK 及其所有第三方依赖(如 HttpClient 4.x、Jackson 等)
+                打包并重定位到独立的命名空间下，与项目中的其他依赖(尤其是 Spring Boot 4
+                默认的 HttpClient 5.x)完全隔离，彻底避免 JAR 包冲突。
+          对比：标准 cos_api 依赖共享项目类路径，在依赖版本不一致时易引发
+                NoSuchMethodError 或 ClassNotFoundException。
+          代价：包体积略大，但换来的是“开箱即用、无需手动排除或补齐依赖”的稳定性。
+          官方文档：https://cloud.tencent.com/document/product/436/50746
+        -->
+        <dependency>
+            <groupId>com.qcloud</groupId>
+            <artifactId>cos_api-bundle</artifactId>
+            <version>5.6.210</version> <!-- 建议使用较新的稳定版 -->
+        </dependency>
+
+        <!-- MyBatis Flex 代码生成 (版本对齐单体项目) -->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-codegen</artifactId>
+            <version>1.11.8</version>
+        </dependency>
+
+        <!-- 数据库连接池：版本交由 Spring Boot 4.1.1 父工程管理 -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+    </dependencies>
+
+</project>

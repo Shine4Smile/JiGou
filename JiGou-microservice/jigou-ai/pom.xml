@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.simple</groupId>
+        <artifactId>JiGou-microservice</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jigou-ai</artifactId>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- ==================== 1. LangChain4j 核心与扩展 ==================== -->
+
+        <!-- LangChain4j 核心包 (单体项目中为 1.19.0) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>1.19.0</version>
+        </dependency>
+
+        <!-- Spring Boot 4 专用 OpenAI Starter (必须是 boot4，版本 1.19.0-beta29) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai-spring-boot4-starter</artifactId>
+            <version>1.19.0-beta29</version>
+        </dependency>
+
+        <!-- 流式输出支持 (版本 1.19.0-beta29) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-reactor</artifactId>
+            <version>1.19.0-beta29</version>
+        </dependency>
+
+        <!-- LangChain4j 的 Redis 集成 (版本 1.19.0-beta29) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
+            <version>1.19.0-beta29</version>
+        </dependency>
+
+        <!-- 解决 DeepSeek/分块响应截断问题 (单体项目中显式引入的 1.19.0) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-http-client-jdk</artifactId>
+            <version>1.19.0</version>
+        </dependency>
+
+        <!-- ==================== 2. Redis 连接适配 ==================== -->
+
+        <!-- 因为引入了 LangChain4j 的 Redis 组件，必须处理底层客户端冲突 -->
+        <!-- 排除默认的 Lettuce -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>lettuce-core</artifactId>
+                    <groupId>io.lettuce</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 引入 Jedis -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+        </dependency>
+
+        <!-- ==================== 3. 内部微服务模块 ==================== -->
+
+        <!-- 引入微服务内部公共模块和实体模块 -->
+        <dependency>
+            <groupId>com.simple</groupId>
+            <artifactId>jigou-model</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.simple</groupId>
+            <artifactId>jigou-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+    </dependencies>
+
+</project>

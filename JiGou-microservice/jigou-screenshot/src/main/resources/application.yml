@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: jigou-screenshot
+  profiles:
+    active:
+      - dev
+server:
+  port: 8182
+  servlet:
+    context-path: /api
+
+# Dubbo（团队共享配置，protocol.port 每个服务必须唯一）
+dubbo:
+  application:
+    name: jigou-screenshot
+    qos-enable: false # 关闭 QoS 服务，防止本地启动多个微服务时报 22222 端口冲突
+    protocol: tri # 显式指定首选协议，消除 "Can't find an instance URL..." 警告
+  protocol:
+    name: tri
+    port: 50052 # 注意：每个微服务这个端口必须不一样
+  consumer:
+    timeout: 120000
+    check: false # 【关键】本地开发建议设为 false，避免依赖的服务未启动导致当前服务启动失败
+  provider:
+    timeout: 120000

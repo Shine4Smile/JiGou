@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: jigou-app
+  # session（Boot 4 已移除 spring.session.store-type，classpath 有 spring-boot-session-data-redis 即自动走 Redis）
+  session:
+    # 30 天过期，两个服务必须一致
+    timeout: 2592000
+    data:
+      redis:
+        # 与 user和app模块完全一致，两个服务才会读写同一批 Session
+        namespace: jigou:session
+  profiles:
+    active:
+      - dev
+server:
+  port: 8183
+  servlet:
+    context-path: /api
+    # 30 days expire
+    session:
+      cookie:
+        max-age: 2592000
+# 对接knife4j接口文档，springdoc-openapi项目配置
+springdoc:
+  group-configs:
+    - group: 'default'
+      packages-to-scan:
+        - com.simple.jigou.controller
+# knife4j
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+# Dubbo（团队共享配置，protocol.port 每个服务必须唯一）
+dubbo:
+  application:
+    name: jigou-app
+    qos-enable: false # 关闭 QoS 服务，防止本地启动多个微服务时报 22222 端口冲突
+    protocol: tri # 显式指定首选协议，消除 "Can't find an instance URL..." 警告
+  protocol:
+    name: tri
+    port: 50053 # 注意：每个微服务这个端口必须不一样
+  consumer:
+    timeout: 120000
+    check: false # 【关键】本地开发建议设为 false，避免依赖的服务未启动导致当前服务启动失败
+  provider:
+    timeout: 120000
