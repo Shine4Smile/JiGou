@@ -22,6 +22,7 @@
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
 - [配置说明](#配置说明)
+- [存储路径与访问地址](#存储路径与访问地址跨机部署)
 - [接口文档](#接口文档)
 - [构建与打包](#构建与打包)
 - [与单体版本的关系](#与单体版本的关系)
@@ -117,6 +118,17 @@ src/main/resources/
 ├── application-dev.yml           # 本地私有配置（已忽略，不提交）
 ├── application-dev.yml.example   # 私有配置模板（提交）
 └── mapper/                       # MyBatis XML（如有）
+```
+
+运行期会生成 `tmp` 数据目录（已在 `.gitignore` 中忽略）。默认 `${jigou.storage.root}` 会自下而上查找 `.git`，本地开发统一落在**仓库根目录**，与单体版本共用同一份数据：
+
+```text
+<项目根>/tmp/
+├── code_output/        # 应用工作区（jigou-app 写，预览基于此）
+├── code_versions/      # 历史版本快照（jigou-app 写）
+├── code_deploy/        # 部署产物（jigou-app 写，Nginx 托管）
+├── screenshots/        # 封面截图（jigou-screenshot 写，Nginx 托管）
+└── MermaidDiagram/     # 架构图（工作流模式，未迁移到微服务）
 ```
 
 ## 端口规划
@@ -244,6 +256,194 @@ npm run dev:micro    # 经 Higress 8880 访问微服务
 
 > 修改端口时，必须同步更新：前端 `.env.micro`、Higress 路由、本文档端口表。
 
+> 存储目录与对外访问地址（`jigou.*`）的解析规则、Nginx 与跨机部署方式见下一节。
+
+## 存储路径与访问地址（跨机部署）
+
+微服务化后「文件」和「访问地址」必须分开看：
+
+- **文件只属于产生它的那个服务**（本机磁盘），不跨机器共享；
+- **跨服务 / 跨浏览器只传 URL**：Dubbo 接口返回可访问 URL，数据库 `app.cover` 也只存 URL；
+- 每个服务各自解析自己的存储目录（`JiGouPaths`），对外地址集中解析（`JiGouUrls`），业务代码中不允许硬编码 `http://localhost`。
+
+### 目录归属
+
+| 目录（默认 `${jigou.storage.root}/tmp/...`） | 产生方 | 用途 | 对外访问方式 |
+| --- | --- | --- | --- |
+| `code_output/{codeGenType}_{appId}` | jigou-app | 应用工作区，预览基于此 | `/api/static/{codeGenType}_{appId}/`（经网关到 app，**不经过 Nginx**） |
+| `code_versions/{codeGenType}_{appId}/v{n}` | jigou-app | 历史版本快照 | 版本接口读取，不对外 |
+| `code_deploy/{deployKey}` | jigou-app | 部署产物 | `{deploy.base-url}/{deployKey}/`（Nginx） |
+| `screenshots/{uuid}/*.jpg` | jigou-screenshot | 应用封面 | `{screenshot.base-url}/screenshots/...`（Nginx 或 COS） |
+
+### 配置项
+
+| 配置项 | 环境变量 | 作用 | 默认值 | 使用方 |
+| --- | --- | --- | --- | --- |
+| `jigou.storage.root` | `JIGOU_STORAGE_ROOT` | **本机目录**：存储根目录 | 自动探测项目根，兜底 `user.dir` | jigou-app、jigou-screenshot |
+| `jigou.deploy.base-url` | `JIGOU_DEPLOY_BASE_URL` | **对外 URL**：已部署应用根地址 | `http://localhost` | jigou-app |
+| `jigou.screenshot.base-url` | `JIGOU_SCREENSHOT_BASE_URL` | **对外 URL**：截图根地址 | 同 `deploy.base-url` | jigou-screenshot |
+
+优先级：**JVM 参数 `-D` / 环境变量 > `application-dev.yml` > 代码默认值**。
+
+> 这三项在类加载期由静态常量解析；`jigou-common` 中的 `JiGouConfigEnvironmentPostProcessor`（Boot 4 的 `org.springframework.boot.EnvironmentPostProcessor`）会在 yml 加载完成后把值注入系统属性。
+> 启动日志会打印解析结果，排查时先看：`JiGou 本机存储根目录：...` 与 `JiGou 部署根地址：...，截图根地址：...`。
+
+### 场景一：本地开发（同机，默认值即可）
+
+`jigou-app/src/main/resources/application-dev.yml`：
+
+```yaml
+jigou:
+  storage:
+    root: D:/path/to/JiGou     # = Nginx 里 tmp 的上一级目录
+  deploy:
+    base-url: http://localhost # = Nginx 的访问地址
+```
+
+`jigou-screenshot/src/main/resources/application-dev.yml`：
+
+```yaml
+jigou:
+  storage:
+    root: D:/path/to/JiGou
+  screenshot:
+    base-url: http://localhost
+```
+
+Nginx 保持单体版本的配置即可（见下「模式一」），单体时代的代码、部署产物与封面都能继续使用。
+
+### 场景二：分机部署
+
+| 服务 | 需要配置 | 示例 |
+| --- | --- | --- |
+| `jigou-app` | `JIGOU_STORAGE_ROOT`、`JIGOU_DEPLOY_BASE_URL` | `JIGOU_DEPLOY_BASE_URL=http://app.example.com` |
+| `jigou-screenshot` | `JIGOU_STORAGE_ROOT`、`JIGOU_SCREENSHOT_BASE_URL` | `JIGOU_SCREENSHOT_BASE_URL=http://shot.example.com` |
+| `jigou-user` | 无（不读写文件） | — |
+
+> `JIGOU_DEPLOY_BASE_URL` 必须能被**截图服务所在机器**访问（截图服务要用 Chrome 打开它），否则封面无法生成。
+
+### Nginx 配置
+
+先记住对应关系：
+
+| 后端 | 配置项 | Nginx 指向 | 对外地址 |
+| --- | --- | --- | --- |
+| jigou-app | `jigou.storage.root` | `${storage.root}/tmp/code_deploy` | `{deploy.base-url}/{deployKey}/` |
+| jigou-screenshot | `jigou.storage.root` | `${storage.root}/tmp/screenshots` | `{screenshot.base-url}/screenshots/...` |
+| 预览 `/api/static/...` | — | **不经过 Nginx**，由 jigou-app 直接读 `tmp/code_output` | 经 Higress |
+
+**模式一：同机（本地开发 / 单机部署）**
+
+```nginx
+server {
+    listen       80;
+    server_name  localhost;
+
+    charset      utf-8;
+    charset_types text/css application/javascript text/plain text/xml application/json;
+
+    # = ${jigou.storage.root}/tmp/code_deploy
+    root         D:/path/to/JiGou/tmp/code_deploy;
+
+    # 已部署应用：优先精确文件，找不到回退 index.html（兼容前端路由）
+    location ~ ^/([^/]+)/(.*)$ {
+        try_files /$1/$2 /$1/index.html =404;
+    }
+
+    location / {
+        root   html;
+        index  index.html index.htm;
+    }
+
+    # = ${jigou.storage.root}/tmp/screenshots
+    # ^~ 优先级高于上面的正则 location，缺少它 /screenshots/... 会被正则截获而 404
+    location ^~ /screenshots/ {
+        alias D:/path/to/JiGou/tmp/screenshots/;   # 末尾的 / 不能省
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # Mermaid 架构图：工作流模式未迁移到微服务，保留仅为兼容历史文件
+    location ^~ /MermaidDiagram/ {
+        alias D:/path/to/JiGou/tmp/MermaidDiagram/;
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   html;
+    }
+}
+```
+
+**模式二：分机 · 部署机（与 jigou-app 同机）**
+
+```nginx
+server {
+    listen       80;                 # 非 80 时，端口要写进 JIGOU_DEPLOY_BASE_URL
+    server_name  app.example.com;    # 或直接使用 IP
+
+    charset      utf-8;
+    charset_types text/css application/javascript text/plain text/xml application/json;
+
+    # = ${jigou.storage.root}/tmp/code_deploy（app 机器上的真实目录）
+    root         /path/to/jigou/tmp/code_deploy;
+
+    location ~ ^/([^/]+)/(.*)$ {
+        try_files /$1/$2 /$1/index.html =404;
+    }
+
+    location / {
+        root   html;
+        index  index.html index.htm;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   html;
+    }
+}
+```
+
+**模式三：分机 · 截图机（与 jigou-screenshot 同机）**
+
+```nginx
+server {
+    listen       80;                 # 非 80 时，端口要写进 JIGOU_SCREENSHOT_BASE_URL
+    server_name  shot.example.com;
+
+    charset      utf-8;
+
+    # = ${jigou.storage.root}/tmp/screenshots（截图机器上的真实目录）
+    location ^~ /screenshots/ {
+        alias /path/to/jigou/tmp/screenshots/;   # 末尾的 / 不能省
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 截图机只对外提供截图
+    location / {
+        return 404;
+    }
+}
+```
+
+注意事项：
+
+1. `root` / `alias` 必须等于该机器上对应服务的 `${jigou.storage.root}/tmp/...`；
+2. `^~` 不能省，否则 `/screenshots/...` 会被正则 `location ~ ^/([^/]+)/(.*)$` 截获而 404；
+3. `alias` 末尾的 `/` 不能省；Windows 下路径统一使用 `/`；
+4. 端口不是 80 时，必须把端口写进对应的 `*-base-url`；
+5. 不要对 `/api` 做前缀 rewrite（`StaticResourceController` 的目录重定向依赖原始 URI）。
+
+### 验证
+
+| 步骤 | 期望 |
+| --- | --- |
+| 启动日志 | `JiGou 本机存储根目录：<storage.root>`、`JiGou 部署根地址：...，截图根地址：...` |
+| 生成应用 | app 日志 `保存成功，路径为：<storage.root>/tmp/code_output/...` |
+| 预览 `/api/static/html_<id>/` | 200（不经过 Nginx） |
+| 部署后打开返回地址 | `{deploy.base-url}/{deployKey}/` 200 |
+| 部署后查 `app.cover` | 形如 `{screenshot.base-url}/screenshots/xxx.jpg`（不是本机路径），图片可打开 |
+
 ## 接口文档
 
 | 服务 | Knife4j 地址 |
@@ -286,6 +486,14 @@ mvn -DskipTests clean package
 mvn -f JiGou-microservice/pom.xml -DskipTests clean package
 ```
 
+两套体系在**能力范围**上的差异：
+
+| 能力 | 单体版本 | 微服务版本 |
+| --- | --- | --- |
+| 用户 / 应用 / 版本 / 对话生成 / 部署 / 截图 | ✅ | ✅ 已迁移 |
+| LangGraph4j 多节点工作流（`langgraph4j/`、`/workflow/*`） | ✅ 实验特性，未接入主链路 | ❌ 未迁移（未接入业务主链路，不属于本次改造重点） |
+| Prometheus + Grafana AI 监控（`monitor/`、`grafana/`） | ✅ | ❌ 未迁移（相对独立） |
+
 ## 常见问题
 
 **1. 启动时报 `Nacos registry address is invalid` 或连接超时**
@@ -325,6 +533,19 @@ Dubbo QoS 端口默认 22222。各模块 `application.yml` 已配置 `dubbo.appl
 **9. 单体与微服务可以同时启动吗？**
 
 可以。单体使用 8181，微服务使用 8182 / 8183 / 8184，端口不冲突；但两者共享同一个 MySQL 库和 Redis，调试时注意数据互相影响。
+
+**10. 应用封面裂图 / 404**
+
+- 查数据库 `app.cover` 是否为 URL（形如 `http://<host>/screenshots/...`）；若是本机路径，说明截图服务没有走 `JiGouUrls.screenshotUrl()`，检查启动日志是否出现「截图服务返回了非 URL 结果」；
+- 确认截图机 Nginx 的 `/screenshots/` alias 指向 `${JIGOU_STORAGE_ROOT}/tmp/screenshots/`；
+- 确认 `JIGOU_SCREENSHOT_BASE_URL` 对浏览器可达（端口不要漏）；
+- 走 COS 时检查 `jigou-screenshot` 的 `cos.client.*` 是否完整。
+
+**11. 部署地址 404 / 拒绝连接**
+
+- 确认 `JIGOU_DEPLOY_BASE_URL` 指向部署机 Nginx（含端口），且**从截图机也能访问**；
+- 确认部署机 Nginx 的 `root` 指向 `${JIGOU_STORAGE_ROOT}/tmp/code_deploy`；
+- 重新部署一次，确认 `tmp/code_deploy/{deployKey}/index.html` 已生成。
 
 ## 声明
 

@@ -8,10 +8,14 @@
 ![Vite](https://img.shields.io/badge/Vite-7-646cff)
 ![MySQL](https://img.shields.io/badge/MySQL-8-4479a1)
 ![Redis](https://img.shields.io/badge/Redis-6%2B-dc382d)
+![Nacos](https://img.shields.io/badge/Nacos-2.x-00a1ea)
+![Dubbo](https://img.shields.io/badge/Dubbo-3.3.6-2b6cb0)
+![Higress](https://img.shields.io/badge/Higress-Gateway-6b46c1)
 
 ## 目录
 
 - [项目简介](#项目简介)
+- [两种运行模式（单体 / 微服务）](#两种运行模式单体--微服务)
 - [核心能力](#核心能力)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
@@ -39,7 +43,41 @@ JiGou 是一个 AI 零代码应用生成平台。用户输入一句需求后，�
 
 平台同时提供用户与管理员体系、应用广场、对话历史、接口限流，以及基于 Prometheus + Grafana 的 AI 调用监控。
 
-项目采用**前后端分离**结构：后端是单体 Spring Boot 应用（本仓库根目录），前端是独立的 Vue 3 工程（`JiGou-frontend/`）。
+项目采用**前后端分离**结构：前端是独立的 Vue 3 工程（`JiGou-frontend/`），后端提供**两种可运行形态**——单体版本（本仓库根目录 `src/`）与微服务版本（`JiGou-microservice/`，Nacos + Dubbo + Higress）。两者共用同一套前端、数据库与 Redis，可按学习目标任选其一，详见 [两种运行模式](#两种运行模式单体--微服务)。
+
+## 两种运行模式（单体 / 微服务）
+
+本仓库提供**两套可运行的后端实现**，共用同一个 Vue 前端、同一套 MySQL 与 Redis，可按学习目标任选其一：
+
+| 维度 | 单体版本（默认） | 微服务版本 |
+| --- | --- | --- |
+| 代码位置 | 根目录 `src/main/java`（`JiGouApplication`） | `JiGou-microservice/`（三个可启动模块） |
+| 运行进程 | 1 个（HTTP `8181`） | 3 个：`jigou-user`(8184)、`jigou-app`(8183)、`jigou-screenshot`(8182) |
+| 服务治理 | 无 | **Nacos** 注册中心 + **Dubbo**（triple 协议）RPC |
+| 统一入口 | 直接访问后端 | **Higress** 网关（`8880`）统一转发 HTTP 请求 |
+| 登录态 | Spring Session（Redis） | 同样基于 Redis Session，用户 / 应用服务共享 |
+| 文件与访问地址 | `<项目根>/tmp` + Nginx | 各服务本机 `tmp` + 可配置的对外地址，**支持跨机部署** |
+| LangGraph4j 工作流 | ✅ 有（实验特性，未接入业务主链路） | ❌ 未迁移 |
+| Prometheus + Grafana 监控 | ✅ 有 | ❌ 未迁移 |
+| 适合场景 | 跑通完整业务主链路、二次开发基线 | 学习服务拆分、注册中心 / 网关 / RPC 与跨机部署 |
+
+> **微服务改造范围**：用户、应用、版本、对话生成、部署、截图等业务能力均已迁移；单体中的 **LangGraph4j 多节点工作流**（`langgraph4j/`、`/workflow/*` 演示接口）与 **Prometheus + Grafana 监控**（`monitor/`、`grafana/`）**没有**迁移——前者尚未接入业务主链路，后者相对独立且不属于本次改造重点。
+>
+> 微服务的模块划分、端口、配置、Nginx 与跨机部署细节，见 **[JiGou-microservice/README.md](JiGou-microservice/README.md)**。
+
+**怎么启动**
+
+```bash
+# 单体（默认）
+# 后端：运行 src/main/java/com/simple/jigou/JiGouApplication.java   -> http://localhost:8181/api
+# 前端：cd JiGou-frontend && npm run dev                            -> 代理到 8181
+
+# 微服务
+# 后端：依次启动 JiGouScreenshotApplication -> JiGouUserApplication -> JiGouAppApplication
+# 前端：cd JiGou-frontend && npm run dev:micro                      -> 代理到 Higress 8880
+```
+
+两种模式端口不冲突，可以同时启动；但它们共用同一套 MySQL 与 Redis，调试时注意数据互相影响。
 
 ## 核心能力
 
@@ -122,6 +160,8 @@ JiGou 是一个 AI 零代码应用生成平台。用户输入一句需求后，�
 └── MermaidDiagram   Mermaid 架构图 SVG，由 Nginx 托管
 ```
 
+> 上图为**单体版本**架构。微服务版本为 `Vue → Higress(8880) → jigou-user / jigou-app / jigou-screenshot`，服务间通过 **Nacos + Dubbo** 调用，架构与部署见 [JiGou-microservice/README.md](JiGou-microservice/README.md)。
+
 ## 目录结构
 
 ```text
@@ -150,13 +190,14 @@ JiGou/
 │   ├── mapper/                      # MyBatis XML
 │   └── prompt/                      # 各场景系统提示词
 ├── src/test/java/                   # 单元测试与集成测试
+├── JiGou-microservice/            # 微服务版本：Nacos + Dubbo + Higress（详见其 README）
 ├── JiGou-frontend/                  # Vue 3 前端工程（独立 npm 项目）
 ├── sql/
 │   ├── create_table.sql             # 建库建表脚本
 │   └── upgrade/                     # 增量升级脚本（按序号执行）
 ├── grafana/                         # Grafana 看板 JSON 与导入说明
 ├── prometheus.yml                   # Prometheus 抓取配置
-└── tmp/                             # 运行时生成的代码、版本、部署产物与图片（不入库）
+└── tmp/                             # 运行时生成的代码、版本、部署产物与图片（不入库；两种模式默认共用）
 ```
 
 ## 环境要求
@@ -172,10 +213,15 @@ JiGou/
 | Google Chrome | 部署后自动截图生成封面 | 使用部署/封面功能时必需 |
 | Mermaid CLI | `npm i -g @mermaid-js/mermaid-cli`，提供 `mmdc` 命令 | 仅工作流模式生成架构图时需要 |
 | Nginx | 托管部署产物、封面截图与 Mermaid 架构图 | 使用部署 / 封面 / 架构图功能时必需 |
+| Nacos | 2.x（注册中心，`8848`） | 仅微服务模式需要 |
+| Higress | 网关（`8880`），统一转发 HTTP 接口 | 仅微服务模式需要 |
 
 > 说明：Selenium 通过 WebDriverManager 自动下载 ChromeDriver，首次使用需要联网。
+> 微服务模式额外需要 **Nacos**（注册中心）与 **Higress**（网关），启动顺序与配置见 [两种运行模式](#两种运行模式单体--微服务)。
 
 ## 快速开始
+
+> 本节以**单体版本**为例。想跑微服务版本，请看 [两种运行模式](#两种运行模式单体--微服务) 与 [JiGou-microservice/README.md](JiGou-microservice/README.md)。
 
 ### 1. 克隆项目
 
@@ -421,6 +467,8 @@ server {
 
 ## 工作流模式（LangGraph4j，实验特性）
 
+> ⚠️ 该能力仅提供于**单体版本**；微服务版本未迁移，原因见 [两种运行模式](#两种运行模式单体--微服务)。
+
 除流式输出外，项目还用 LangGraph4j 实现了一套多节点工作流，链路如下：
 
 ```text
@@ -443,6 +491,8 @@ START
 - **该模式目前未接入业务主链路**：前端对话仍然走 `AppController#chatToGenCode` → `AppServiceImpl#chatToGenCode` 的流式输出。如需使用工作流生成应用，可参考 `AppServiceImpl#chatToGenCode` 的参数校验、用户校验、对话历史记录、SSE 推送方式，把工作流执行结果接入；注意工作流会真实写入 `tmp/code_output` 并调用 `npm` 构建 Vue 工程。
 
 ## 监控与可观测性
+
+> ⚠️ 该能力仅提供于**单体版本**；微服务版本未迁移，原因见 [两种运行模式](#两种运行模式单体--微服务)。
 
 后端已集成 Spring Boot Actuator + Micrometer，并暴露 Prometheus 端点：`http://localhost:8181/api/actuator/prometheus`。
 
