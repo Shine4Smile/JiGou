@@ -26,23 +26,26 @@ public interface AppConstant {
 
     /**
      * 应用生成目录（同时作为应用的「工作区」目录，存放应用最新代码，预览与部署均基于该目录）
+     * <p>由 {@link JiGouPaths} 统一解析（本机路径），保证 app / screenshot 进程与 Nginx 指向同一目录
      */
-    String CODE_OUTPUT_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
+    String CODE_OUTPUT_ROOT_DIR = JiGouPaths.CODE_OUTPUT_ROOT_DIR;
 
     /**
-     * 应用版本库目录（存放用户提交的历史版本快照，与工作区隔离，避免污染预览与部署产物）
+     * 应用版本库目录（存放用户提交的历史版本快照，与工作区隔离）
      */
-    String CODE_VERSION_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_versions";
+    String CODE_VERSION_ROOT_DIR = JiGouPaths.CODE_VERSION_ROOT_DIR;
 
     /**
-     * 应用部署目录
+     * 应用部署目录（由 Nginx 托管）
      */
-    String CODE_DEPLOY_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_deploy";
+    String CODE_DEPLOY_ROOT_DIR = JiGouPaths.CODE_DEPLOY_ROOT_DIR;
 
     /**
-     * 应用部署域名
+     * 应用部署域名（对外地址，不含结尾斜杠）
+     * <p>由 {@link JiGouUrls} 统一解析，禁止在业务代码里再硬编码 localhost
      */
-    String CODE_DEPLOY_HOST = "http://localhost";
+    String CODE_DEPLOY_HOST = JiGouUrls.DEPLOY_BASE_URL;
+
 
     /**
      * 单个应用最多保留的历史版本数量

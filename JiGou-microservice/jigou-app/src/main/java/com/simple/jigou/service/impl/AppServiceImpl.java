@@ -12,6 +12,7 @@ import com.simple.jigou.ai.AiCodeGenTypeRoutingService;
 import com.simple.jigou.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.simple.jigou.ai.AiCodeGeneratorServiceFactory;
 import com.simple.jigou.constant.AppConstant;
+import com.simple.jigou.constant.JiGouUrls;
 import com.simple.jigou.core.AiCodeGeneratorFacade;
 import com.simple.jigou.core.AppStorageManager;
 import com.simple.jigou.core.builder.VueProjectBuilder;
@@ -551,17 +552,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             try {
                 // 调用截图服务生成截图并上传
                 String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-                // 判断返回结果：如果是 http 开头，说明是 COS 直链；否则是本地路径，需要转 Nginx
-                String finalCoverUrl = screenshotUrl;
-                if (!StrUtil.startWith(screenshotUrl, "http://") &&
-                        !StrUtil.startWith(screenshotUrl, "https://")) {
-                    // 走本地 Nginx 转换逻辑
-                    finalCoverUrl = convertToHttpUrl(screenshotUrl);
+                // 契约校验：非 URL 一律不写库，避免把本机路径写进封面字段
+                if (!JiGouUrls.isAbsoluteUrl(screenshotUrl)) {
+                    log.error("截图服务返回了非 URL 结果，跳过封面更新，appId: {}，返回值: {}", appId, screenshotUrl);
+                    return;
                 }
                 // 更新应用封面字段
                 App updateApp = new App();
                 updateApp.setId(appId);
-                updateApp.setCover(finalCoverUrl);
+                updateApp.setCover(screenshotUrl);
                 boolean updated = this.updateById(updateApp);
                 ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
             } catch (Exception e) {
@@ -569,35 +568,5 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 log.error("异步生成应用截图失败，appId: {}, appUrl: {}", appId, appUrl, e);
             }
         });
-    }
-
-    /**
-     * 将本地绝对路径转换为 HTTP 访问路径
-     * 例如：D:/project/.../tmp/screenshots/4ab36b54/1.jpg -> http://localhost/screenshots/4ab36b54/1.jpg
-     *
-     * @param localPath 原始本地路径
-     * @return HTTP 路径
-     */
-    private static String convertToHttpUrl(String localPath) {
-        if (localPath == null || localPath.trim().isEmpty()) {
-            return "";
-        }
-
-        // 1. 将 Windows 的反斜杠 \ 替换为正斜杠 / (兼容 Nginx 和 URL)
-        String normalizedPath = localPath.replace("\\", "/");
-
-        // 2. 截取 "screenshots/" 及其后面的内容
-        String keyword = "screenshots/";
-        int index = normalizedPath.indexOf(keyword);
-
-        if (index != -1) {
-            // 截取得到：screenshots/4ab36b54/67056_compressed.jpg
-            String relativePath = normalizedPath.substring(index);
-            // 拼接成 HTTP 地址
-            return "http://localhost/" + relativePath;
-        }
-
-        // 兜底：如果路径中没有 screenshots，原样返回或做其他处理
-        return normalizedPath;
     }
 }

@@ -4,6 +4,7 @@ import cn.hutool.core.img.ImgUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.simple.jigou.constant.JiGouPaths;
 import com.simple.jigou.exception.BusinessException;
 import com.simple.jigou.exception.ErrorCode;
 import io.github.bonigarcia.wdm.WebDriverManager;
@@ -89,8 +90,8 @@ public class WebScreenshotUtils {
         }
         try {
             // 创建临时目录
-            String rootPath = System.getProperty("user.dir") + File.separator + "tmp" + File.separator + "screenshots"
-                    + File.separator + UUID.randomUUID().toString().substring(0, 8);
+            String rootPath = JiGouPaths.SCREENSHOT_ROOT_DIR + File.separator
+                    + UUID.randomUUID().toString().substring(0, 8);
             FileUtil.mkdir(rootPath);
             // 图片后缀
             final String IMAGE_SUFFIX = ".png";

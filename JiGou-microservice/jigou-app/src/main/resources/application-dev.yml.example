@@ -55,3 +55,19 @@ dubbo:
     register-mode: instance # 保持你原有的应用级服务发现配置
     parameters:
       register-consumer-url: "true" # 开启消费者 URL 注册，消除日志黄色提示，方便排查
+
+# =============================================================================
+# 存储目录与对外访问地址（模板：复制为 application-dev.yml 后按本机实际情况修改）
+#
+# storage.root     —— 本机【目录】：必须等于 Nginx 里 tmp 的上一级目录
+# deploy.base-url  —— 对外【URL】：= Nginx 的访问地址（浏览器 + 截图机都要能访问）
+#
+# 本地开发示例（app 与 screenshot 同机）：
+#   storage.root:    D:/path/to/JiGou
+#   deploy.base-url: http://localhost
+# =============================================================================
+jigou:
+  storage:
+    root: D:/path/to/JiGou          # 本机存储根目录，必须与 Nginx 的 root/alias 一致
+  deploy:
+    base-url: http://localhost      # 已部署应用的对外地址（浏览器 + 截图机都要能访问）

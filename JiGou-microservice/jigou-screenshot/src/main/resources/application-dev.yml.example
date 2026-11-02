@@ -13,3 +13,22 @@ dubbo:
     register-mode: instance # 保持你原有的应用级服务发现配置
     parameters:
       register-consumer-url: "true" # 开启消费者 URL 注册，消除日志黄色提示，方便排查
+
+# =============================================================================
+# 存储目录与对外访问地址（模板：复制为 application-dev.yml 后按本机实际情况修改）
+#
+# storage.root         —— 本机【目录】：Nginx 的 /screenshots/ alias 指向 <storage.root>/tmp/screenshots/
+# screenshot.base-url  —— 对外【URL】：= Nginx 的访问地址（浏览器要能访问，端口不要漏）
+#
+# 本地开发示例（与 app 同机）：
+#   storage.root:        D:/path/to/JiGou
+#   screenshot.base-url: http://localhost
+#
+# 说明：走 COS 时 screenshot.base-url 可以不配（直接返回 COS 直链），
+#      但 app 的 deploy.base-url 仍需能被截图机访问。
+# =============================================================================
+jigou:
+  storage:
+    root: D:/path/to/JiGou          # 本机存储根目录，必须与 Nginx 的 root/alias 一致
+  screenshot:
+    base-url: http://localhost      # 截图对外地址（nginx访问地址）；截图服务单独部署时改成截图机地址

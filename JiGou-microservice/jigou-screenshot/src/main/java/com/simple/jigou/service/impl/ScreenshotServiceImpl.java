@@ -2,6 +2,7 @@ package com.simple.jigou.service.impl;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
+import com.simple.jigou.constant.JiGouUrls;
 import com.simple.jigou.exception.ErrorCode;
 import com.simple.jigou.exception.ThrowUtils;
 import com.simple.jigou.manager.CosManager;
@@ -48,9 +49,11 @@ public class ScreenshotServiceImpl implements ScreenshotService {
         } else {
             log.warn("未检测到 CosManager 或 COS 配置不全，直接使用本地路径");
         }
-        // 降级：返回本地路径后续配合nginx实现，千万不能删除本地文件
-        log.info("使用本地截图路径：{}", localScreenshotPath);
-        return localScreenshotPath;
+        // 降级：本机磁盘 + Nginx 托管，对外返回 URL（截图服务与应用服务可能不在同一台机器上）
+        String screenshotUrl = JiGouUrls.screenshotUrl(localScreenshotPath);
+        log.info("截图保存到本地：{}，对外访问地址：{}", localScreenshotPath, screenshotUrl);
+        return screenshotUrl;
+
     }
 
     /**
