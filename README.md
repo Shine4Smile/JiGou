@@ -1,6 +1,8 @@
 # JiGou（即构）· AI 零代码应用生成平台
 
 > 用一句自然语言描述需求，即可生成可预览、可持续迭代、可一键部署的网页应用。
+>
+> 🎬 **项目演示录屏（B 站，约 5 分钟）**：https://www.bilibili.com/video/BV18vxQ6hEKf/
 
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen)
